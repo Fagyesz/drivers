@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+    <title>FAQ - Driver Alerts</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="app-title">
+                <img src="../assets/app-ico.ico" alt="App Logo" class="app-logo">
+                <h1>Driver Alerts - FAQ</h1>
+            </div>
+            <button id="back-btn" class="button">Back to Application</button>
+        </header>
+
+        <div class="content-area">
+            <h2>Frequently Asked Questions</h2>
+            
+            <div class="faq-container">
+                <div class="faq-item">
+                    <h3>What is Driver Alerts?</h3>
+                    <p>Driver Alerts is a vehicle monitoring system that helps you track vehicles, drivers, routes, and alerts related to your fleet management.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>How do I import data?</h3>
+                    <p>Go to the Import tab and click "Select Excel File". Choose your Excel file containing vehicle or driver data, then click "Process Imported Data".</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>What formats are supported for import?</h3>
+                    <p>Driver Alerts supports Excel files (.xlsx, .xls) for data import. The system can recognize sheets for Vehicles, People, and Rounds data.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>How do I view alerts?</h3>
+                    <p>Click on the "Alerts" tab to view all system-generated alerts, such as license expirations or vehicle maintenance reminders.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>Can I export my data?</h3>
+                    <p>Currently, export functionality is not implemented. This feature will be added in a future update.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>Where is my data stored?</h3>
+                    <p>All data is stored locally on your computer in a SQLite database in the application data folder.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>How do I back up my data?</h3>
+                    <p>The database file is located in your application data folder. You can manually copy this file to create a backup.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>I'm experiencing an issue. How do I report it?</h3>
+                    <p>From the Help menu, select "Report an Issue" to access the issue logging form. Provide details about the problem you're experiencing.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('back-btn').addEventListener('click', () => {
+            window.history.back();
+        });
+    </script>
+</body>
+</html> 

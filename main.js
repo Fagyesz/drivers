@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const ElectronStore = require('electron-store');
@@ -6,6 +6,10 @@ const ElectronStore = require('electron-store');
 const store = new ElectronStore();
 // Import database with the correct class
 const DriverAlertsDatabase = require('./src/database');
+
+// Import logger and issue manager
+const logger = require('./src/logger');
+const issueManager = require('./src/issues');
 
 // Initialize database with the correct path
 const database = new DriverAlertsDatabase(path.join(app.getPath('userData'), 'database', 'driverAlerts.db'));
@@ -42,17 +46,212 @@ function createWindow() {
   // Log any errors from the renderer
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Failed to load:', errorCode, errorDescription);
+    logger.error('Failed to load renderer:', { errorCode, errorDescription });
   });
 
   mainWindow.on('closed', function () {
     mainWindow = null;
   });
+  
+  // Create application menu
+  createApplicationMenu();
+}
+
+// Create the application menu with Help
+function createApplicationMenu() {
+  const isMac = process.platform === 'darwin';
+  
+  const template = [
+    // App menu (macOS only)
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideothers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    
+    // File menu
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Import Data',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('navigate-to-tab', 'import-tab');
+            }
+          }
+        },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    
+    // Edit menu
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(isMac ? [
+          { role: 'pasteAndMatchStyle' },
+          { role: 'delete' },
+          { role: 'selectAll' },
+          { type: 'separator' },
+          {
+            label: 'Speech',
+            submenu: [
+              { role: 'startSpeaking' },
+              { role: 'stopSpeaking' }
+            ]
+          }
+        ] : [
+          { role: 'delete' },
+          { type: 'separator' },
+          { role: 'selectAll' }
+        ])
+      ]
+    },
+    
+    // View menu
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    
+    // Window menu
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac ? [
+          { type: 'separator' },
+          { role: 'front' },
+          { type: 'separator' },
+          { role: 'window' }
+        ] : [
+          { role: 'close' }
+        ])
+      ]
+    },
+    
+    // Help menu
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Learn More',
+          click: async () => {
+            await shell.openExternal('https://github.com/DriverAlerts');
+          }
+        },
+        {
+          label: 'Documentation',
+          click: async () => {
+            await shell.openExternal('https://github.com/DriverAlerts/docs');
+          }
+        },
+        {
+          label: 'Community Discussions',
+          click: async () => {
+            await shell.openExternal('https://github.com/DriverAlerts/discussions');
+          }
+        },
+        {
+          label: 'Search Issues',
+          click: async () => {
+            await shell.openExternal('https://github.com/DriverAlerts/issues');
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'FAQ',
+          click: () => {
+            createFaqWindow();
+          }
+        },
+        {
+          label: 'Report an Issue',
+          click: () => {
+            createIssueLoggerWindow();
+          }
+        }
+      ]
+    }
+  ];
+  
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
+// Create FAQ window
+function createFaqWindow() {
+  const faqWindow = new BrowserWindow({
+    width: 900,
+    height: 700,
+    parent: mainWindow,
+    modal: false,
+    icon: path.join(__dirname, 'assets/app-ico.ico'),
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  });
+  
+  faqWindow.loadFile('src/faq.html');
+  
+  // Log window creation
+  logger.info('FAQ window opened');
+}
+
+// Create issue logger window
+function createIssueLoggerWindow() {
+  const issueLoggerWindow = new BrowserWindow({
+    width: 800,
+    height: 700,
+    parent: mainWindow,
+    modal: false,
+    icon: path.join(__dirname, 'assets/app-ico.ico'),
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  });
+  
+  issueLoggerWindow.loadFile('src/issue-logger.html');
+  
+  // Log window creation
+  logger.info('Issue logger window opened');
 }
 
 // Initialize the app right away
 app.whenReady().then(() => {
   createWindow();
   console.log('Application started');
+  logger.info('Application started', { version: app.getVersion() });
 });
 
 app.on('window-all-closed', function () {
@@ -269,4 +468,35 @@ ipcMain.handle('insert-demo-data', async () => {
     console.error('Error inserting demo data:', error);
     return { success: false, error: error.message };
   }
+});
+
+// New IPC handlers for logging and issues
+
+// Handle issue logging
+ipcMain.handle('log-issue', async (event, issueData) => {
+  try {
+    const result = await issueManager.logIssue(issueData);
+    logger.info('Issue logged', { issueId: result.issueId });
+    return result;
+  } catch (error) {
+    logger.error('Error logging issue:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get system info
+ipcMain.handle('get-system-info', () => {
+  return {
+    os: process.platform,
+    arch: process.arch,
+    version: app.getVersion(),
+    electronVersion: process.versions.electron,
+    chromiumVersion: process.versions.chrome,
+    nodeVersion: process.versions.node
+  };
+});
+
+// Get recent logs
+ipcMain.handle('get-recent-logs', (event, count = 100) => {
+  return logger.getRecentLogs(count);
 }); 

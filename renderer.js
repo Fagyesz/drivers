@@ -34,6 +34,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Load dashboard counts - implemented in a way that doesn't require ipc
     loadDashboardCountsDemo();
+    
+    // Initialize logging
+    initializeLogging();
 });
 
 // Tab functionality
@@ -1516,4 +1519,56 @@ function showNotification(message, type = 'info', duration = 5000) {
       notification.remove();
     }, 300);
   }, duration);
+}
+
+// Listen for navigation events from main process
+ipcRenderer.on('navigate-to-tab', (event, tabId) => {
+    console.log('Navigating to tab:', tabId);
+    
+    // Find tab button
+    const tabButton = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+    
+    if (tabButton) {
+        // Simulate click on tab button
+        tabButton.click();
+    }
+});
+
+// Initialize logger functionality
+function initializeLogging() {
+    console.log('Initializing logging system');
+    
+    // Log application startup
+    logEvent('info', 'Application initialized in renderer process');
+    
+    // Log tab changes
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const tabId = button.getAttribute('data-tab');
+            logEvent('info', `Tab changed to ${tabId}`);
+        });
+    });
+    
+    // Log import actions
+    if (selectFileBtn) {
+        selectFileBtn.addEventListener('click', () => {
+            logEvent('info', 'File selection initiated');
+        });
+    }
+    
+    if (importDataBtn) {
+        importDataBtn.addEventListener('click', () => {
+            logEvent('info', 'Data import initiated');
+        });
+    }
+}
+
+// Log an event to the main process logger
+function logEvent(level, message, data = null) {
+    // Log to console for immediate feedback
+    console[level](message, data || '');
+    
+    // Send to main process for persistent logging
+    // This would be implemented by a real IPC channel in a full implementation
+    // For this demo, we're just logging to the console
 } 

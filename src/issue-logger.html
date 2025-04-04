@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+    <title>Issue Logger - Driver Alerts</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="app-title">
+                <img src="../assets/app-ico.ico" alt="App Logo" class="app-logo">
+                <h1>Driver Alerts - Issue Logger</h1>
+            </div>
+            <button id="back-btn" class="button">Back to Application</button>
+        </header>
+
+        <div class="content-area">
+            <h2>Report an Issue</h2>
+            
+            <div class="issue-logger-container">
+                <p>Please provide details about the issue you're experiencing. This information will help us diagnose and fix the problem.</p>
+                
+                <form id="issue-form">
+                    <div class="form-group">
+                        <label for="issue-type">Issue Type</label>
+                        <select id="issue-type" required>
+                            <option value="">Select an issue type</option>
+                            <option value="bug">Bug/Error</option>
+                            <option value="feature">Feature Request</option>
+                            <option value="question">Question</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="issue-title">Issue Title</label>
+                        <input type="text" id="issue-title" placeholder="Brief summary of the issue" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="issue-description">Description</label>
+                        <textarea id="issue-description" rows="5" placeholder="Please describe the issue in detail. Include steps to reproduce if applicable." required></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="system-info">System Information</label>
+                        <textarea id="system-info" rows="3" readonly></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="include-logs">
+                            Include application logs
+                        </label>
+                        <p class="form-note">This will automatically attach recent application logs to help with troubleshooting.</p>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="button">Submit Report</button>
+                        <button type="button" id="cancel-btn" class="button secondary">Cancel</button>
+                    </div>
+                </form>
+                
+                <div id="submission-status" class="status-message"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../src/issue-logger.js"></script>
+</body>
+</html> 
