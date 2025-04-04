@@ -1,5 +1,25 @@
 try {
     console.log('Loading logs-viewer.js');
+    
+    // Add a global error handler to catch any uncaught errors
+    window.onerror = function(message, source, lineno, colno, error) {
+        console.error('Global error caught:', message, 'at', source, ':', lineno, ':', colno);
+        console.error('Error details:', error);
+        
+        // Display error in UI
+        setTimeout(() => {
+            const errorDiv = document.createElement('div');
+            errorDiv.style.color = 'red';
+            errorDiv.style.padding = '10px';
+            errorDiv.style.margin = '10px 0';
+            errorDiv.style.border = '1px solid red';
+            errorDiv.innerHTML = `<strong>Error:</strong> ${message}<br>Source: ${source}:${lineno}:${colno}`;
+            document.body.prepend(errorDiv);
+        }, 500);
+        
+        return true; // Prevents the default error handling
+    };
+    
     const electron = require('electron');
     const ipcRenderer = electron.ipcRenderer;
     const fs = require('fs');

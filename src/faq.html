@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'">
     <title>Help - Driver Alerts</title>
     <link rel="stylesheet" href="../styles.css">
 </head>
@@ -69,6 +69,7 @@
                         <div class="faq-item">
                             <h3>How can I troubleshoot issues?</h3>
                             <p>For developers and advanced users, you can view the application logs by clicking the "Application Logs" tab above. These logs provide detailed information about what's happening in the application, which can help diagnose problems.</p>
+                            <button id="view-logs-btn" class="button" onclick="openLogsViewer()">View Application Logs</button>
                         </div>
                     </div>
                 </div>
@@ -110,6 +111,19 @@
     </div>
 
     <script>
+        // Function to open logs viewer
+        function openLogsViewer() {
+            console.log('View logs button clicked via onclick');
+            try {
+                const electron = require('electron');
+                const ipcRenderer = electron.ipcRenderer;
+                ipcRenderer.send('open-logs-viewer');
+            } catch (e) {
+                console.error('Error sending open-logs-viewer message:', e);
+                alert('Error opening logs viewer: ' + e.message);
+            }
+        }
+        
         window.onload = function() {
             try {
                 console.log('Window loaded in Help page');

@@ -242,11 +242,38 @@ function createFaqWindow() {
 }
 
 function createLogsViewerWindow() {
-  const helpWindow = createHelpWindow();
-  // Send message to switch to logs tab once loaded
-  helpWindow.webContents.on('did-finish-load', () => {
-    helpWindow.webContents.send('switch-to-logs-tab');
+  const helpWindow = new BrowserWindow({
+    width: 1000,
+    height: 800,
+    parent: mainWindow,
+    modal: false,
+    icon: path.join(__dirname, 'assets/app-ico.ico'),
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
   });
+  
+  helpWindow.loadFile('src/logs-viewer.html');
+  
+  // Log window creation
+  logger.info('Logs viewer window opened');
+  
+  // Add debugging events
+  helpWindow.webContents.on('did-finish-load', () => {
+    console.log('Logs viewer window content loaded');
+  });
+  
+  helpWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Failed to load Logs viewer window:', errorCode, errorDescription);
+  });
+  
+  // Enable DevTools for debugging if in dev mode
+  if (process.argv.includes('--dev')) {
+    helpWindow.webContents.openDevTools();
+  }
+  
+  return helpWindow;
 }
 
 // Initialize the app right away
@@ -603,13 +630,15 @@ ipcMain.on('close-current-window', (event) => {
 // This is kept for backwards compatibility but is no longer needed
 ipcMain.on('open-logs-viewer', (event) => {
   console.log('Received open-logs-viewer IPC message');
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (win) {
-    // Instead of opening a new window, just send a message to switch tabs
-    win.webContents.send('switch-to-logs-tab');
-  } else {
-    console.error('Could not find parent window for logs viewer');
+  
+  // Close the current window if it exists
+  const currentWindow = BrowserWindow.fromWebContents(event.sender);
+  if (currentWindow) {
+    currentWindow.close();
   }
+  
+  // Create a new logs viewer window
+  createLogsViewerWindow();
 });
 
 // This is kept for backwards compatibility but is no longer needed
