@@ -213,6 +213,154 @@ class ExcelParser {
             throw new Error(`Failed to get sheet names: ${error.message}`);
         }
     }
+
+    /**
+     * Parse SysWeb Excel format specifically
+     * @param {string} filePath - Path to the Excel file
+     * @returns {Array} Array of records in the correct format for sys_web_temp table
+     */
+    async parseSysWebExcel(filePath) {
+        try {
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.readFile(filePath);
+            
+            // Assume we're working with the first worksheet
+            const worksheet = workbook.worksheets[0];
+            
+            // First resolve all merged cells into a 2D array
+            const resolvedData = this.resolveMergedCells(worksheet);
+            
+            // Find key rows and columns based on headers
+            let nameRow = -1;
+            let dateRow = -1;
+            let dateCol = -1;
+            let planedCol = -1;
+            let actualCol = -1;
+            let checkInCol = -1;
+            let checkOutCol = -1;
+            let workedTimeCol = -1;
+            
+            // Look for key headers
+            for (let i = 0; i < resolvedData.length; i++) {
+                const row = resolvedData[i];
+                if (!row) continue;
+                
+                for (let j = 0; j < row.length; j++) {
+                    const cell = row[j];
+                    if (!cell) continue;
+                    
+                    const cellValue = String(cell).trim().toLowerCase();
+                    
+                    if (cellValue === 'név:') {
+                        nameRow = i;
+                    } else if (cellValue === 'dátum') {
+                        dateRow = i;
+                        dateCol = j;
+                    } else if (cellValue === 'terv') {
+                        planedCol = j;
+                    } else if (cellValue === 'tény') {
+                        actualCol = j;
+                    } else if (cellValue === 'mozgások') {
+                        // Look for BE/KI in the next row
+                        if (resolvedData[i + 1]) {
+                            for (let k = j; k < resolvedData[i + 1].length; k++) {
+                                const subHeader = resolvedData[i + 1][k];
+                                if (!subHeader) continue;
+                                
+                                const subHeaderValue = String(subHeader).trim().toLowerCase();
+                                if (subHeaderValue === 'be') {
+                                    checkInCol = k;
+                                } else if (subHeaderValue === 'ki') {
+                                    checkOutCol = k;
+                                }
+                            }
+                        }
+                    } else if (cellValue === 'ledolg.') {
+                        workedTimeCol = j;
+                    }
+                }
+            }
+            
+            // Extract employee info (name, jobtitle, costcenter)
+            const employeeInfo = {
+                name: '',
+                jobtitle: '',
+                costcenter: ''
+            };
+            
+            if (nameRow >= 0) {
+                const nameCell = resolvedData[nameRow].findIndex(cell => 
+                    cell && String(cell).trim().toLowerCase() === 'név:');
+                
+                if (nameCell >= 0 && nameCell + 1 < resolvedData[nameRow].length) {
+                    employeeInfo.name = resolvedData[nameRow][nameCell + 1] || '';
+                }
+                
+                const jobTitleCell = resolvedData[nameRow + 1]?.findIndex(cell => 
+                    cell && String(cell).trim().toLowerCase() === 'egység:');
+                
+                if (jobTitleCell >= 0 && jobTitleCell + 1 < resolvedData[nameRow + 1].length) {
+                    employeeInfo.jobtitle = resolvedData[nameRow + 1][jobTitleCell + 1] || '';
+                }
+                
+                // Look for costcenter (költséghely)
+                const costCenterRow = nameRow + 1;
+                if (costCenterRow < resolvedData.length) {
+                    const costCenterCell = resolvedData[costCenterRow].findIndex(cell => 
+                        cell && String(cell).trim().toLowerCase() === 'költséghely:');
+                    
+                    if (costCenterCell >= 0 && costCenterCell + 1 < resolvedData[costCenterRow].length) {
+                        employeeInfo.costcenter = resolvedData[costCenterRow][costCenterCell + 1] || '';
+                    }
+                }
+            }
+            
+            // Process data rows
+            const result = [];
+            
+            // Start from date row + 1 (where actual data starts)
+            if (dateRow >= 0 && dateCol >= 0) {
+                // Find first data row (typically this is dateRow + 2)
+                let dataStartRow = dateRow + 2;
+                
+                // Process until we hit an empty row or end of data
+                while (dataStartRow < resolvedData.length && 
+                      resolvedData[dataStartRow] && 
+                      resolvedData[dataStartRow][dateCol]) {
+                    
+                    const row = resolvedData[dataStartRow];
+                    
+                    const record = {
+                        name: employeeInfo.name,
+                        jobtitle: employeeInfo.jobtitle,
+                        costcenter: employeeInfo.costcenter,
+                        date: row[dateCol] || '',
+                        planedshift: planedCol >= 0 ? (row[planedCol] || '') : '',
+                        actual: actualCol >= 0 ? (row[actualCol] || '') : '',
+                        check_in: checkInCol >= 0 ? (row[checkInCol] || '') : '',
+                        check_out: checkOutCol >= 0 ? (row[checkOutCol] || '') : '',
+                        workedTime: workedTimeCol >= 0 ? (row[workedTimeCol] || '') : ''
+                    };
+                    
+                    // Format date if it's a Date object
+                    if (record.date instanceof Date) {
+                        record.date = moment(record.date).format('YYYY-MM-DD');
+                    } else if (typeof record.date === 'string' && record.date.includes('.')) {
+                        // Handle date format like "2023.03.01" -> "2023-03-01"
+                        record.date = record.date.replace(/\./g, '-');
+                    }
+                    
+                    result.push(record);
+                    dataStartRow++;
+                }
+            }
+            
+            return result;
+        } catch (error) {
+            console.error('Error parsing SysWeb Excel:', error);
+            throw new Error(`Failed to parse SysWeb Excel: ${error.message}`);
+        }
+    }
 }
 
 module.exports = new ExcelParser(); 

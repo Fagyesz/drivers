@@ -128,6 +128,22 @@ class DriverAlertsDatabase {
           created_at TEXT DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
+      `,
+      sys_web_temp: `
+        CREATE TABLE IF NOT EXISTS sys_web_temp (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          jobtitle TEXT,
+          costcenter TEXT,
+          date TEXT NOT NULL,
+          planedshift TEXT,
+          actual TEXT,
+          check_in TEXT,
+          check_out TEXT,
+          workedTime TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
       `
     };
 
@@ -644,6 +660,73 @@ class DriverAlertsDatabase {
       this.db.exec('ROLLBACK');
       console.error('Error inserting demo data:', error);
       return false;
+    }
+  }
+
+  // Import SysWeb Excel data
+  async importSysWebData(records) {
+    const result = { success: 0, errors: 0, total: records.length };
+    
+    if (!records || records.length === 0) {
+      return result;
+    }
+    
+    try {
+      // Begin transaction
+      const transaction = this.db.transaction((data) => {
+        // First clear existing data
+        this.db.prepare(`DELETE FROM sys_web_temp`).run();
+        
+        // Insert new records
+        const stmt = this.db.prepare(`
+          INSERT INTO sys_web_temp (
+            name, jobtitle, costcenter, date, planedshift, actual,
+            check_in, check_out, workedTime, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `);
+        
+        for (const record of data) {
+          try {
+            stmt.run(
+              record.name,
+              record.jobtitle,
+              record.costcenter,
+              record.date,
+              record.planedshift,
+              record.actual,
+              record.check_in,
+              record.check_out,
+              record.workedTime
+            );
+            result.success++;
+          } catch (error) {
+            console.error('Error inserting SysWeb record:', error);
+            result.errors++;
+          }
+        }
+      });
+      
+      // Execute transaction
+      transaction(records);
+      
+      return result;
+    } catch (error) {
+      console.error('Error importing SysWeb data:', error);
+      throw error;
+    }
+  }
+
+  // Get SysWeb data
+  async getSysWebData() {
+    try {
+      const query = `
+        SELECT * FROM sys_web_temp
+        ORDER BY date
+      `;
+      return this.db.prepare(query).all();
+    } catch (error) {
+      console.error('Error getting SysWeb data:', error);
+      throw error;
     }
   }
 }

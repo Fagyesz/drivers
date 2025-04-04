@@ -37,6 +37,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Initialize logging
     initializeLogging();
+
+    // Initialize enhanced import functionality
+    initializeEnhancedImport();
 });
 
 // Tab functionality
@@ -1571,4 +1574,269 @@ function logEvent(level, message, data = null) {
     // Send to main process for persistent logging
     // This would be implemented by a real IPC channel in a full implementation
     // For this demo, we're just logging to the console
+}
+
+// Initialize enhanced import functionality
+function initializeEnhancedImport() {
+    console.log('Initializing enhanced import functionality');
+    
+    const selectFileBtn = document.getElementById('select-file-btn');
+    const selectedFilePath = document.getElementById('selected-file-path');
+    const importDataBtn = document.getElementById('import-data-btn');
+    const clearImportBtn = document.getElementById('clear-import-btn');
+    const importStatus = document.getElementById('import-status');
+    const importTypeSelector = document.getElementById('import-type-selector');
+    const importedRecordsContainer = document.getElementById('imported-records');
+    
+    let excelFilePath = '';
+    let currentImportType = 'autodetect';
+    
+    // Event listeners
+    if (selectFileBtn) {
+        selectFileBtn.addEventListener('click', async () => {
+            try {
+                const result = await ipcRenderer.invoke('select-file', {
+                    title: 'Select Excel File',
+                    filters: [
+                        { name: 'Excel Files', extensions: ['xlsx', 'xls'] }
+                    ]
+                });
+                
+                if (result && result.filePaths && result.filePaths.length > 0) {
+                    excelFilePath = result.filePaths[0];
+                    selectedFilePath.textContent = excelFilePath;
+                    importDataBtn.disabled = false;
+                    
+                    showImportStatus('File selected successfully', 'info');
+                }
+            } catch (error) {
+                console.error('Error selecting file:', error);
+                showImportStatus(`Error selecting file: ${error.message}`, 'error');
+            }
+        });
+    }
+    
+    if (importTypeSelector) {
+        importTypeSelector.addEventListener('change', () => {
+            currentImportType = importTypeSelector.value;
+            console.log(`Import type changed to: ${currentImportType}`);
+        });
+    }
+    
+    if (importDataBtn) {
+        importDataBtn.addEventListener('click', async () => {
+            if (!excelFilePath) {
+                showImportStatus('Please select a file first', 'error');
+                return;
+            }
+            
+            try {
+                showImportStatus(`Importing ${currentImportType} data...`, 'info');
+                
+                let result;
+                
+                // Call appropriate import method based on type
+                switch (currentImportType) {
+                    case 'worktime':
+                        result = await ipcRenderer.invoke('import-sysweb-excel', excelFilePath);
+                        break;
+                    case 'alerts':
+                        result = await ipcRenderer.invoke('import-alerts-excel', excelFilePath);
+                        break;
+                    case 'ifleet':
+                        result = await ipcRenderer.invoke('import-ifleet-excel', excelFilePath);
+                        break;
+                    case 'autodetect':
+                    default:
+                        // Try to detect the file type and import accordingly
+                        result = await ipcRenderer.invoke('import-autodetect-excel', excelFilePath);
+                        break;
+                }
+                
+                if (result && result.success) {
+                    showImportStatus(result.message, 'success');
+                    
+                    // Load and display the imported data based on type
+                    await loadImportedData(currentImportType);
+                } else {
+                    showImportStatus(`Import failed: ${result ? result.message : 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error importing data:', error);
+                showImportStatus(`Import error: ${error.message}`, 'error');
+            }
+        });
+    }
+    
+    if (clearImportBtn) {
+        clearImportBtn.addEventListener('click', () => {
+            excelFilePath = '';
+            selectedFilePath.textContent = 'No file selected';
+            importDataBtn.disabled = true;
+            showImportStatus('', '');
+            
+            // Clear the display
+            if (importedRecordsContainer) {
+                importedRecordsContainer.innerHTML = '<p>Import data to see records.</p>';
+            }
+        });
+    }
+    
+    // Refresh button
+    const refreshBtn = document.querySelector('#import-tab .refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async () => {
+            await loadImportedData(currentImportType);
+            showImportStatus('Data refreshed', 'info');
+        });
+    }
+    
+    // Function to load imported data based on type
+    async function loadImportedData(type) {
+        try {
+            let data;
+            
+            switch (type) {
+                case 'worktime':
+                    data = await ipcRenderer.invoke('get-sysweb-data');
+                    renderWorktimeData(data);
+                    break;
+                case 'alerts':
+                    data = await ipcRenderer.invoke('get-alerts-data');
+                    renderAlertsData(data);
+                    break;
+                case 'ifleet':
+                    data = await ipcRenderer.invoke('get-ifleet-data');
+                    renderIFleetData(data);
+                    break;
+                case 'autodetect':
+                default:
+                    // Try to get the most recently imported data
+                    data = await ipcRenderer.invoke('get-latest-import-data');
+                    renderAutodetectData(data);
+                    break;
+            }
+        } catch (error) {
+            console.error(`Error loading ${type} data:`, error);
+            showImportStatus(`Error loading data: ${error.message}`, 'error');
+        }
+    }
+    
+    // Render functions for different data types
+    function renderWorktimeData(data) {
+        if (!importedRecordsContainer) return;
+        
+        if (!data || data.length === 0) {
+            importedRecordsContainer.innerHTML = '<p>No Worktime records found. Import data first.</p>';
+            return;
+        }
+        
+        // Create table
+        let html = `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Job Title</th>
+                        <th>Cost Center</th>
+                        <th>Date</th>
+                        <th>Planned Shift</th>
+                        <th>Actual</th>
+                        <th>Check In</th>
+                        <th>Check Out</th>
+                        <th>Worked Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        // Add rows
+        data.forEach(record => {
+            html += `
+                <tr>
+                    <td>${record.name || ''}</td>
+                    <td>${record.jobtitle || ''}</td>
+                    <td>${record.costcenter || ''}</td>
+                    <td>${record.date || ''}</td>
+                    <td>${record.planedshift || ''}</td>
+                    <td>${record.actual || ''}</td>
+                    <td>${record.check_in || ''}</td>
+                    <td>${record.check_out || ''}</td>
+                    <td>${record.workedTime || ''}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                </tbody>
+            </table>
+        `;
+        
+        importedRecordsContainer.innerHTML = html;
+    }
+    
+    function renderAlertsData(data) {
+        if (!importedRecordsContainer) return;
+        
+        if (!data || data.length === 0) {
+            importedRecordsContainer.innerHTML = '<p>No Alerts records found. Import data first.</p>';
+            return;
+        }
+        
+        // For now, display a placeholder message
+        // This would be replaced with actual alert data rendering
+        importedRecordsContainer.innerHTML = '<p>Alerts data imported successfully. Functionality coming soon.</p>';
+    }
+    
+    function renderIFleetData(data) {
+        if (!importedRecordsContainer) return;
+        
+        if (!data || data.length === 0) {
+            importedRecordsContainer.innerHTML = '<p>No iFleet records found. Import data first.</p>';
+            return;
+        }
+        
+        // For now, display a placeholder message
+        // This would be replaced with actual iFleet data rendering
+        importedRecordsContainer.innerHTML = '<p>iFleet data imported successfully. Functionality coming soon.</p>';
+    }
+    
+    function renderAutodetectData(data) {
+        if (!importedRecordsContainer) return;
+        
+        if (!data || !data.type || !data.records || data.records.length === 0) {
+            importedRecordsContainer.innerHTML = '<p>No data detected. Please try a specific import type.</p>';
+            return;
+        }
+        
+        // Based on detected type, render accordingly
+        switch (data.type) {
+            case 'worktime':
+                renderWorktimeData(data.records);
+                break;
+            case 'alerts':
+                renderAlertsData(data.records);
+                break;
+            case 'ifleet':
+                renderIFleetData(data.records);
+                break;
+            default:
+                importedRecordsContainer.innerHTML = '<p>Unknown data type detected. Please try a specific import type.</p>';
+        }
+    }
+    
+    // Function to show import status
+    function showImportStatus(message, type) {
+        if (!importStatus) return;
+        
+        importStatus.textContent = message;
+        importStatus.className = 'status-message';
+        
+        if (type) {
+            importStatus.classList.add(type);
+        }
+    }
+    
+    // Initial check for already imported data
+    loadImportedData('worktime');
 } 

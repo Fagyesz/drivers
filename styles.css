@@ -838,4 +838,36 @@ h1, h2, h3, h4, h5, h6 {
     #back-btn {
         margin-left: 0;
     }
+}
+
+/* Import type selection styles */
+.import-type-selection {
+    margin-bottom: 20px;
+}
+
+.import-type-selection label {
+    display: inline-block;
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.import-type-selection select {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    min-width: 200px;
+    font-size: 14px;
+}
+
+.import-type-selection select:focus {
+    outline: none;
+    border-color: #5c9acf;
+    box-shadow: 0 0 0 2px rgba(92, 154, 207, 0.2);
+}
+
+.imported-data-container {
+    margin-top: 30px;
+    padding: 20px;
+    border-top: 1px solid #eee;
 } 

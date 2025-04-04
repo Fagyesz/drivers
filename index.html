@@ -116,7 +116,17 @@
                 
                 <div class="import-section">
                     <h3>Import Excel Data</h3>
-                    <p>Select an Excel file to import vehicle movements, stop events, or time records.</p>
+                    <p>Select an Excel file to import data for Driver Alerts system.</p>
+                    
+                    <div class="import-type-selection">
+                        <label>Import Type:</label>
+                        <select id="import-type-selector">
+                            <option value="autodetect">Auto Detect</option>
+                            <option value="worktime">Worktime (SysWeb)</option>
+                            <option value="alerts">Alerts (30min)</option>
+                            <option value="ifleet">iFleet</option>
+                        </select>
+                    </div>
                     
                     <div class="file-input-container">
                         <button id="select-file-btn" class="button">Select Excel File</button>
@@ -128,6 +138,14 @@
                     <div class="import-controls">
                         <button id="import-data-btn" class="button" disabled>Process Imported Data</button>
                         <button id="clear-import-btn" class="button secondary">Clear</button>
+                    </div>
+                </div>
+                
+                <div class="imported-data-container">
+                    <h3>Imported Records</h3>
+                    <div id="imported-records">
+                        <!-- Imported records will be inserted here -->
+                        <p>Import data to see records.</p>
                     </div>
                 </div>
             </div>

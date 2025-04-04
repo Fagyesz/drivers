@@ -6,6 +6,8 @@ const ElectronStore = require('electron-store');
 const store = new ElectronStore();
 // Import database with the correct class
 const DriverAlertsDatabase = require('./src/database');
+// Import Excel parser
+const excelParser = require('./src/excelParser');
 
 // Import logger and issue manager
 const logger = require('./src/logger');
@@ -293,18 +295,18 @@ app.on('activate', function () {
 });
 
 // IPC handlers for file selection
-ipcMain.handle('select-file', async () => {
-  const { canceled, filePaths } = await dialog.showOpenDialog({
+ipcMain.handle('select-file', async (event, options = {}) => {
+  const defaultOptions = {
+    title: 'Select File',
     properties: ['openFile'],
     filters: [
-      { name: 'Excel Files', extensions: ['xlsx', 'xls'] }
+      { name: 'Excel Files', extensions: ['xlsx', 'xls'] },
+      { name: 'All Files', extensions: ['*'] }
     ]
-  });
-  if (canceled) {
-    return '';
-  } else {
-    return filePaths[0];
-  }
+  };
+
+  const mergedOptions = { ...defaultOptions, ...options };
+  return await dialog.showOpenDialog(mergedOptions);
 });
 
 ipcMain.handle('get-app-data-path', () => {
@@ -456,6 +458,154 @@ ipcMain.handle('get-vehicle-rounds', async (event, platenumber) => {
     return await database.getVehicleRounds(platenumber);
   } catch (error) {
     console.error('Error getting vehicle rounds:', error);
+    return [];
+  }
+});
+
+// SysWeb Excel operations
+ipcMain.handle('import-sysweb-excel', async (event, filePath) => {
+  try {
+    // First parse the Excel file
+    const records = await excelParser.parseSysWebExcel(filePath);
+    
+    // Then import the data into the database
+    const result = await database.importSysWebData(records);
+    
+    return {
+      success: true,
+      message: `Successfully imported ${result.success} records. ${result.errors} errors.`,
+      data: result
+    };
+  } catch (error) {
+    console.error('Error importing SysWeb Excel:', error);
+    return {
+      success: false,
+      message: `Error importing SysWeb Excel: ${error.message}`,
+      error: error.message
+    };
+  }
+});
+
+// New IPC handlers for different import types
+ipcMain.handle('import-alerts-excel', async (event, filePath) => {
+  try {
+    // This is a stub for future implementation
+    // Would call an appropriate parser and database method
+    
+    return {
+      success: true,
+      message: "Alerts import functionality is not yet implemented",
+      data: { success: 0, errors: 0, total: 0 }
+    };
+  } catch (error) {
+    console.error('Error importing Alerts Excel:', error);
+    return {
+      success: false,
+      message: `Error importing Alerts Excel: ${error.message}`,
+      error: error.message
+    };
+  }
+});
+
+ipcMain.handle('import-ifleet-excel', async (event, filePath) => {
+  try {
+    // This is a stub for future implementation
+    // Would call an appropriate parser and database method
+    
+    return {
+      success: true,
+      message: "iFleet import functionality is not yet implemented",
+      data: { success: 0, errors: 0, total: 0 }
+    };
+  } catch (error) {
+    console.error('Error importing iFleet Excel:', error);
+    return {
+      success: false,
+      message: `Error importing iFleet Excel: ${error.message}`,
+      error: error.message
+    };
+  }
+});
+
+ipcMain.handle('import-autodetect-excel', async (event, filePath) => {
+  try {
+    // Try to detect file type from content - simplified approach
+    // For now, default to SysWeb as it's the only one implemented
+    
+    // In a real implementation, would analyze the Excel structure to determine type
+    const records = await excelParser.parseSysWebExcel(filePath);
+    
+    if (records && records.length > 0) {
+      // Found SysWeb-compatible data
+      const result = await database.importSysWebData(records);
+      
+      return {
+        success: true,
+        message: `Detected Worktime data. Successfully imported ${result.success} records. ${result.errors} errors.`,
+        data: {
+          type: 'worktime',
+          ...result
+        }
+      };
+    } else {
+      return {
+        success: false,
+        message: "Could not auto-detect file type. Please select a specific import type.",
+        error: "Auto-detection failed"
+      };
+    }
+  } catch (error) {
+    console.error('Error auto-detecting Excel format:', error);
+    return {
+      success: false,
+      message: `Error auto-detecting Excel format: ${error.message}`,
+      error: error.message
+    };
+  }
+});
+
+// Get latest imported data
+ipcMain.handle('get-latest-import-data', async (event) => {
+  try {
+    // For now, default to SysWeb data as it's the only one implemented
+    const records = await database.getSysWebData();
+    
+    if (records && records.length > 0) {
+      return {
+        type: 'worktime',
+        records: records
+      };
+    } else {
+      return {
+        type: null,
+        records: []
+      };
+    }
+  } catch (error) {
+    console.error('Error getting latest import data:', error);
+    return {
+      type: null,
+      records: []
+    };
+  }
+});
+
+// Handler for retrieving alerts data (stub for now)
+ipcMain.handle('get-alerts-data', async (event) => {
+  return [];  // Empty array as placeholder
+});
+
+// Handler for retrieving iFleet data (stub for now)
+ipcMain.handle('get-ifleet-data', async (event) => {
+  return [];  // Empty array as placeholder
+});
+
+// Handler for retrieving SysWeb data
+ipcMain.handle('get-sysweb-data', async (event) => {
+  try {
+    return await database.getSysWebData();
+  } catch (error) {
+    console.error('Error getting SysWeb data:', error);
     return [];
   }
 });
