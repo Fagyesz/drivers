@@ -672,9 +672,12 @@ class DriverAlertsDatabase {
     }
     
     try {
+      console.log(`Importing ${records.length} SysWeb records to database`);
+      
       // Begin transaction
       const transaction = this.db.transaction((data) => {
         // First clear existing data
+        console.log('Clearing existing data from sys_web_temp table');
         this.db.prepare(`DELETE FROM sys_web_temp`).run();
         
         // Insert new records
@@ -687,20 +690,35 @@ class DriverAlertsDatabase {
         
         for (const record of data) {
           try {
+            // Clean and format data
+            const cleanRecord = {
+              name: record.name || '',
+              jobtitle: record.jobtitle || '',
+              costcenter: record.costcenter || '',
+              date: this.formatDate(record.date),
+              planedshift: record.planedshift || '',
+              actual: record.actual || '',
+              check_in: record.check_in || '',
+              check_out: record.check_out || '',
+              workedTime: record.workedTime || ''
+            };
+            
+            console.log('Inserting record:', cleanRecord);
+            
             stmt.run(
-              record.name,
-              record.jobtitle,
-              record.costcenter,
-              record.date,
-              record.planedshift,
-              record.actual,
-              record.check_in,
-              record.check_out,
-              record.workedTime
+              cleanRecord.name,
+              cleanRecord.jobtitle,
+              cleanRecord.costcenter,
+              cleanRecord.date,
+              cleanRecord.planedshift,
+              cleanRecord.actual,
+              cleanRecord.check_in,
+              cleanRecord.check_out,
+              cleanRecord.workedTime
             );
             result.success++;
           } catch (error) {
-            console.error('Error inserting SysWeb record:', error);
+            console.error('Error inserting SysWeb record:', error, record);
             result.errors++;
           }
         }
@@ -709,10 +727,44 @@ class DriverAlertsDatabase {
       // Execute transaction
       transaction(records);
       
+      console.log('Import completed with result:', result);
       return result;
     } catch (error) {
       console.error('Error importing SysWeb data:', error);
       throw error;
+    }
+  }
+
+  // Helper method to format dates consistently
+  formatDate(date) {
+    if (!date) return '';
+    
+    // Already in YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return date;
+    }
+    
+    // Try to handle various date formats
+    try {
+      // Format like 2023.03.01
+      if (typeof date === 'string' && date.includes('.')) {
+        // Replace dots with dashes for SQL compatibility
+        return date.replace(/(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+      }
+      
+      // If it's a Date object
+      if (date instanceof Date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+      
+      // If all else fails, return as is
+      return date;
+    } catch (error) {
+      console.error('Error formatting date:', error, date);
+      return date; // Return as is on error
     }
   }
 

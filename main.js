@@ -41,10 +41,8 @@ function createWindow() {
     mainWindow.show();
   });
   
-  // Open the DevTools in development mode
-  if (process.argv.includes('--dev')) {
-    mainWindow.webContents.openDevTools();
-  }
+  // Always open the DevTools during development
+  mainWindow.webContents.openDevTools();
 
   // Log any errors from the renderer
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -465,11 +463,27 @@ ipcMain.handle('get-vehicle-rounds', async (event, platenumber) => {
 // SysWeb Excel operations
 ipcMain.handle('import-sysweb-excel', async (event, filePath) => {
   try {
+    console.log('Starting SysWeb Excel import from:', filePath);
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      console.error('File does not exist:', filePath);
+      return {
+        success: false,
+        message: `File does not exist: ${filePath}`,
+        error: 'File not found'
+      };
+    }
+    
     // First parse the Excel file
+    console.log('Parsing SysWeb Excel file...');
     const records = await excelParser.parseSysWebExcel(filePath);
+    console.log(`Parsed ${records.length} records from SysWeb Excel`);
     
     // Then import the data into the database
+    console.log('Importing records to database...');
     const result = await database.importSysWebData(records);
+    console.log('Import completed with result:', result);
     
     return {
       success: true,

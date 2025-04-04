@@ -5,7 +5,7 @@ console.log('Basic renderer started');
 
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded');
+    console.log('DOM loaded - initializing basic renderer');
     
     // Add a splash effect to the dashboard
     addSplashEffect();
@@ -61,6 +61,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+    
+    // Initialize import functionality
+    initializeImport();
 });
 
 // Add splash effect to dashboard
@@ -412,4 +415,246 @@ document.querySelector('.tab-btn[data-tab="import-tab"]').addEventListener('clic
             });
         }
     }
-}); 
+});
+
+function initializeImport() {
+    console.log('Initializing import functionality');
+    
+    const selectFileBtn = document.getElementById('select-file-btn');
+    const selectedFilePath = document.getElementById('selected-file-path');
+    const importDataBtn = document.getElementById('import-data-btn');
+    const clearImportBtn = document.getElementById('clear-import-btn');
+    const importStatus = document.getElementById('import-status');
+    const importTypeSelector = document.getElementById('import-type-selector');
+    const importedRecordsContainer = document.getElementById('imported-records');
+    
+    let excelFilePath = '';
+    let currentImportType = 'worktime'; // Default to worktime
+    
+    console.log('Looking for import elements:', { 
+        selectFileBtn: !!selectFileBtn, 
+        selectedFilePath: !!selectedFilePath,
+        importDataBtn: !!importDataBtn 
+    });
+    
+    // Event listeners
+    if (selectFileBtn) {
+        selectFileBtn.addEventListener('click', async () => {
+            console.log('Select file button clicked');
+            try {
+                const { ipcRenderer } = require('electron');
+                const result = await ipcRenderer.invoke('select-file');
+                console.log('File selection result:', result);
+                
+                if (result && result.filePaths && result.filePaths.length > 0) {
+                    excelFilePath = result.filePaths[0];
+                    console.log('Selected file path:', excelFilePath);
+                    selectedFilePath.textContent = excelFilePath;
+                    importDataBtn.disabled = false;
+                    
+                    showImportStatus('File selected successfully', 'info');
+                } else {
+                    console.log('No file selected or selection canceled');
+                }
+            } catch (error) {
+                console.error('Error selecting file:', error);
+                showImportStatus(`Error selecting file: ${error.message}`, 'error');
+            }
+        });
+    }
+    
+    if (importTypeSelector) {
+        importTypeSelector.addEventListener('change', () => {
+            currentImportType = importTypeSelector.value;
+            console.log(`Import type changed to: ${currentImportType}`);
+        });
+    }
+    
+    if (importDataBtn) {
+        importDataBtn.addEventListener('click', async () => {
+            console.log('Process imported data button clicked');
+            
+            if (!excelFilePath) {
+                showImportStatus('Please select a file first', 'error');
+                return;
+            }
+            
+            try {
+                const { ipcRenderer } = require('electron');
+                showImportStatus(`Processing ${currentImportType} data...`, 'info');
+                
+                let result;
+                switch (currentImportType) {
+                    case 'worktime':
+                        console.log('Calling import-sysweb-excel with path:', excelFilePath);
+                        result = await ipcRenderer.invoke('import-sysweb-excel', excelFilePath);
+                        break;
+                    case 'alerts':
+                        result = await ipcRenderer.invoke('import-alerts-excel', excelFilePath);
+                        break;
+                    case 'ifleet':
+                        result = await ipcRenderer.invoke('import-ifleet-excel', excelFilePath);
+                        break;
+                    case 'autodetect':
+                    default:
+                        result = await ipcRenderer.invoke('import-autodetect-excel', excelFilePath);
+                        break;
+                }
+                
+                console.log('Import result:', result);
+                
+                if (result && result.success) {
+                    showImportStatus(result.message, 'success');
+                    
+                    // Display the data
+                    displayImportedData(currentImportType);
+                } else {
+                    showImportStatus(`Import failed: ${result ? result.message : 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error importing data:', error);
+                showImportStatus(`Import error: ${error.message}`, 'error');
+            }
+        });
+    }
+    
+    if (clearImportBtn) {
+        clearImportBtn.addEventListener('click', () => {
+            excelFilePath = '';
+            selectedFilePath.textContent = 'No file selected';
+            importDataBtn.disabled = true;
+            importedRecordsContainer.innerHTML = '<p>Import data to see records.</p>';
+            showImportStatus('', '');
+        });
+    }
+    
+    // Function to show import status messages
+    function showImportStatus(message, type) {
+        if (!importStatus) return;
+        
+        importStatus.textContent = message;
+        importStatus.className = 'status-message';
+        
+        if (type) {
+            importStatus.classList.add(type);
+        }
+    }
+    
+    // Function to display imported data based on type
+    async function displayImportedData(type) {
+        if (!importedRecordsContainer) return;
+        
+        const { ipcRenderer } = require('electron');
+        try {
+            let data;
+            
+            switch (type) {
+                case 'worktime':
+                    data = await ipcRenderer.invoke('get-sysweb-data');
+                    displayWorktimeData(data);
+                    break;
+                case 'alerts':
+                    data = await ipcRenderer.invoke('get-alerts-data');
+                    importedRecordsContainer.innerHTML = '<p>Alerts data imported. Functionality coming soon.</p>';
+                    break;
+                case 'ifleet':
+                    data = await ipcRenderer.invoke('get-ifleet-data');
+                    importedRecordsContainer.innerHTML = '<p>iFleet data imported. Functionality coming soon.</p>';
+                    break;
+                default:
+                    data = await ipcRenderer.invoke('get-latest-import-data');
+                    if (data && data.type === 'worktime') {
+                        displayWorktimeData(data.records);
+                    } else {
+                        importedRecordsContainer.innerHTML = '<p>Data imported but no specific handler available.</p>';
+                    }
+            }
+        } catch (error) {
+            console.error('Error displaying imported data:', error);
+            importedRecordsContainer.innerHTML = `<p>Error displaying data: ${error.message}</p>`;
+        }
+    }
+    
+    // Function to display worktime data specifically
+    function displayWorktimeData(data) {
+        if (!data || data.length === 0) {
+            importedRecordsContainer.innerHTML = '<p>No worktime records found.</p>';
+            return;
+        }
+        
+        // Group records by person
+        const peopleGroups = {};
+        
+        data.forEach(record => {
+            if (!record.name) return;
+            
+            if (!peopleGroups[record.name]) {
+                peopleGroups[record.name] = {
+                    name: record.name,
+                    jobtitle: record.jobtitle,
+                    costcenter: record.costcenter,
+                    records: []
+                };
+            }
+            
+            peopleGroups[record.name].records.push(record);
+        });
+        
+        // Build HTML for each person
+        let html = '';
+        
+        Object.values(peopleGroups).forEach(person => {
+            html += `
+                <div class="person-section">
+                    <div class="person-header">
+                        <h3>${person.name || 'Unknown Person'}</h3>
+                        <div class="person-details">
+                            <span><strong>Job Title:</strong> ${person.jobtitle || 'N/A'}</span>
+                            <span><strong>Cost Center:</strong> ${person.costcenter || 'N/A'}</span>
+                        </div>
+                    </div>
+                    
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Planned Shift</th>
+                                <th>Actual</th>
+                                <th>Check In</th>
+                                <th>Check Out</th>
+                                <th>Worked Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            // Sort records by date
+            person.records.sort((a, b) => {
+                return a.date.localeCompare(b.date);
+            });
+            
+            // Add rows for each record
+            person.records.forEach(record => {
+                html += `
+                    <tr>
+                        <td>${record.date || ''}</td>
+                        <td>${record.planedshift || ''}</td>
+                        <td>${record.actual || ''}</td>
+                        <td>${record.check_in || ''}</td>
+                        <td>${record.check_out || ''}</td>
+                        <td>${record.workedTime || ''}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+                <hr>
+            `;
+        });
+        
+        importedRecordsContainer.innerHTML = html;
+    }
+} 

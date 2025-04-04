@@ -100,46 +100,6 @@ function loadDashboardCountsDemo() {
     console.log('Dashboard counts updated (demo)');
 }
 
-// Set up event listeners
-function setupEventListeners() {
-    // Select Excel file button
-    selectFileBtn.addEventListener('click', async () => {
-        try {
-            const filePath = await ipcRenderer.invoke('select-file');
-            if (filePath) {
-                excelFilePath = filePath;
-                selectedFilePath.textContent = filePath;
-                importDataBtn.disabled = false;
-            }
-        } catch (error) {
-            showImportStatus(`Error selecting file: ${error.message}`, 'error');
-        }
-    });
-    
-    // Import data button
-    importDataBtn.addEventListener('click', async () => {
-        if (excelFilePath) {
-            try {
-                showImportStatus('Importing data...', 'info');
-                await importExcelFile(excelFilePath);
-                showImportStatus('Data imported successfully!', 'success');
-                await loadData(); // Reload data after import
-            } catch (error) {
-                showImportStatus(`Import failed: ${error.message}`, 'error');
-            }
-        }
-    });
-    
-    // Search functionality
-    driverSearch.addEventListener('input', () => {
-        filterDrivers(driverSearch.value.toLowerCase());
-    });
-    
-    vehicleSearch.addEventListener('input', () => {
-        filterVehicles(vehicleSearch.value.toLowerCase());
-    });
-}
-
 // Load data from database
 async function loadData() {
     try {
@@ -1594,6 +1554,7 @@ function initializeEnhancedImport() {
     // Event listeners
     if (selectFileBtn) {
         selectFileBtn.addEventListener('click', async () => {
+            console.log('Select file button clicked');
             try {
                 const result = await ipcRenderer.invoke('select-file', {
                     title: 'Select Excel File',
@@ -1602,12 +1563,20 @@ function initializeEnhancedImport() {
                     ]
                 });
                 
+                console.log('File selection result:', result);
+                
                 if (result && result.filePaths && result.filePaths.length > 0) {
                     excelFilePath = result.filePaths[0];
+                    console.log('Selected file path:', excelFilePath);
                     selectedFilePath.textContent = excelFilePath;
                     importDataBtn.disabled = false;
                     
                     showImportStatus('File selected successfully', 'info');
+                } else if (result && !result.canceled) {
+                    console.warn('No file paths returned but dialog not canceled');
+                    showImportStatus('No file selected', 'error');
+                } else {
+                    console.log('File selection canceled');
                 }
             } catch (error) {
                 console.error('Error selecting file:', error);
@@ -1625,12 +1594,16 @@ function initializeEnhancedImport() {
     
     if (importDataBtn) {
         importDataBtn.addEventListener('click', async () => {
+            console.log('Import button clicked');
+            
             if (!excelFilePath) {
                 showImportStatus('Please select a file first', 'error');
+                console.error('No file selected for import');
                 return;
             }
             
             try {
+                console.log(`Starting import process for type: ${currentImportType}, file: ${excelFilePath}`);
                 showImportStatus(`Importing ${currentImportType} data...`, 'info');
                 
                 let result;
@@ -1638,20 +1611,25 @@ function initializeEnhancedImport() {
                 // Call appropriate import method based on type
                 switch (currentImportType) {
                     case 'worktime':
+                        console.log('Calling import-sysweb-excel');
                         result = await ipcRenderer.invoke('import-sysweb-excel', excelFilePath);
                         break;
                     case 'alerts':
+                        console.log('Calling import-alerts-excel');
                         result = await ipcRenderer.invoke('import-alerts-excel', excelFilePath);
                         break;
                     case 'ifleet':
+                        console.log('Calling import-ifleet-excel');
                         result = await ipcRenderer.invoke('import-ifleet-excel', excelFilePath);
                         break;
                     case 'autodetect':
                     default:
-                        // Try to detect the file type and import accordingly
+                        console.log('Calling import-autodetect-excel');
                         result = await ipcRenderer.invoke('import-autodetect-excel', excelFilePath);
                         break;
                 }
+                
+                console.log('Import result:', result);
                 
                 if (result && result.success) {
                     showImportStatus(result.message, 'success');
@@ -1660,6 +1638,7 @@ function initializeEnhancedImport() {
                     await loadImportedData(currentImportType);
                 } else {
                     showImportStatus(`Import failed: ${result ? result.message : 'Unknown error'}`, 'error');
+                    console.error('Import failed:', result);
                 }
             } catch (error) {
                 console.error('Error importing data:', error);
