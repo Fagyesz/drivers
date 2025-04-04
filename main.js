@@ -194,9 +194,9 @@ function createApplicationMenu() {
           }
         },
         {
-          label: 'Report an Issue',
+          label: 'View Application Logs',
           click: () => {
-            createIssueLoggerWindow();
+            createLogsViewerWindow();
           }
         }
       ]
@@ -499,4 +499,109 @@ ipcMain.handle('get-system-info', () => {
 // Get recent logs
 ipcMain.handle('get-recent-logs', (event, count = 100) => {
   return logger.getRecentLogs(count);
-}); 
+});
+
+// Get all logs as a single string (for logs viewer)
+ipcMain.handle('get-all-logs', async () => {
+  try {
+    const logFiles = logger.getAllLogs();
+    
+    // If no log files, return empty string
+    if (!logFiles || logFiles.length === 0) {
+      return '';
+    }
+    
+    // Read most recent log file
+    const mostRecentLog = logFiles[0];
+    const logContent = fs.readFileSync(mostRecentLog, { encoding: 'utf8' });
+    
+    // Return content
+    return logContent;
+  } catch (error) {
+    logger.error('Error getting all logs:', error);
+    return '';
+  }
+});
+
+// Clear logs (for logs viewer)
+ipcMain.handle('clear-logs', async () => {
+  try {
+    // Create empty current log file
+    fs.writeFileSync(
+      logger.currentLogFile,
+      `=== Logs cleared at ${new Date().toISOString()} ===\n`,
+      { encoding: 'utf8' }
+    );
+    
+    // Log the clear action
+    logger.info('Logs were cleared by user');
+    
+    return { success: true };
+  } catch (error) {
+    logger.error('Error clearing logs:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Export logs (for logs viewer)
+ipcMain.handle('export-logs', async () => {
+  try {
+    // Show save dialog
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export Logs',
+      defaultPath: path.join(app.getPath('documents'), `driver-alerts-logs-${new Date().toISOString().split('T')[0]}.log`),
+      filters: [
+        { name: 'Log Files', extensions: ['log'] },
+        { name: 'Text Files', extensions: ['txt'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    
+    if (canceled || !filePath) {
+      return '';
+    }
+    
+    // Get all logs
+    const logFiles = logger.getAllLogs();
+    
+    // If no log files, return empty
+    if (!logFiles || logFiles.length === 0) {
+      return '';
+    }
+    
+    // Read most recent log file
+    const mostRecentLog = logFiles[0];
+    const logContent = fs.readFileSync(mostRecentLog, { encoding: 'utf8' });
+    
+    // Write to selected file
+    fs.writeFileSync(filePath, logContent, { encoding: 'utf8' });
+    
+    // Log the export
+    logger.info(`Logs exported to ${filePath}`);
+    
+    return filePath;
+  } catch (error) {
+    logger.error('Error exporting logs:', error);
+    return '';
+  }
+});
+
+// Function to create logs viewer window
+function createLogsViewerWindow() {
+  const logsViewerWindow = new BrowserWindow({
+    width: 900,
+    height: 700,
+    parent: mainWindow,
+    modal: false,
+    icon: path.join(__dirname, 'assets/app-ico.ico'),
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  });
+  
+  logsViewerWindow.loadFile('src/logs-viewer.html');
+  
+  // Log window creation
+  logger.info('Logs viewer window opened');
+} 

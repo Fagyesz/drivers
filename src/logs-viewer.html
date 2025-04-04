@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+    <title>Logs Viewer - Driver Alerts</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="app-title">
+                <img src="../assets/app-ico.ico" alt="App Logo" class="app-logo">
+                <h1>Driver Alerts - Logs Viewer</h1>
+            </div>
+            <div class="header-actions">
+                <button id="refresh-logs-btn" class="button" title="Refresh Logs">Refresh</button>
+                <button id="back-btn" class="button secondary">Back to FAQ</button>
+            </div>
+        </header>
+
+        <div class="content-area">
+            <div class="logs-controls">
+                <div class="form-group">
+                    <label for="log-level-filter">Filter by Level:</label>
+                    <select id="log-level-filter">
+                        <option value="all">All Levels</option>
+                        <option value="error">Errors Only</option>
+                        <option value="warn">Warnings & Errors</option>
+                        <option value="info">Info & Above</option>
+                        <option value="debug">Debug & Above</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="log-search">Search Logs:</label>
+                    <input type="text" id="log-search" placeholder="Filter by keyword...">
+                </div>
+                
+                <div class="form-actions">
+                    <button id="clear-logs-btn" class="button secondary">Clear Logs</button>
+                    <button id="export-logs-btn" class="button">Export Logs</button>
+                </div>
+            </div>
+            
+            <div class="logs-container">
+                <pre id="logs-output" class="logs-output">Loading logs...</pre>
+            </div>
+        </div>
+    </div>
+
+    <script src="../src/logs-viewer.js"></script>
+</body>
+</html> 

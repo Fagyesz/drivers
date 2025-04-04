@@ -14,7 +14,10 @@
                 <img src="../assets/app-ico.ico" alt="App Logo" class="app-logo">
                 <h1>Driver Alerts - FAQ</h1>
             </div>
-            <button id="back-btn" class="button">Back to Application</button>
+            <div class="header-actions">
+                <button id="view-logs-btn" class="button">View Application Logs</button>
+                <button id="back-btn" class="button secondary">Back to Application</button>
+            </div>
         </header>
 
         <div class="content-area">
@@ -57,8 +60,8 @@
                 </div>
 
                 <div class="faq-item">
-                    <h3>I'm experiencing an issue. How do I report it?</h3>
-                    <p>From the Help menu, select "Report an Issue" to access the issue logging form. Provide details about the problem you're experiencing.</p>
+                    <h3>How can I troubleshoot issues?</h3>
+                    <p>For developers and advanced users, you can view the application logs by clicking the "View Application Logs" button at the top of this page. These logs provide detailed information about what's happening in the application, which can help diagnose problems.</p>
                 </div>
             </div>
         </div>
@@ -67,6 +70,10 @@
     <script>
         document.getElementById('back-btn').addEventListener('click', () => {
             window.history.back();
+        });
+        
+        document.getElementById('view-logs-btn').addEventListener('click', () => {
+            window.location.href = 'logs-viewer.html';
         });
     </script>
 </body>
