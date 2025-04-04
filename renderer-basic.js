@@ -7,6 +7,9 @@ console.log('Basic renderer started');
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded');
     
+    // Add a splash effect to the dashboard
+    addSplashEffect();
+    
     // Initialize tab system
     initializeTabs();
     
@@ -22,10 +25,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 insertDemoDataBtn.disabled = true;
                 insertDemoDataBtn.textContent = 'Loading...';
                 
+                // Add loading animation to dashboard cards
+                document.querySelectorAll('.dashboard-card').forEach(card => {
+                    card.classList.add('loading');
+                });
+                
                 const result = await ipcRenderer.invoke('insert-demo-data');
                 
                 if (result.success) {
                     console.log('Demo data inserted successfully');
+                    // Show success notification
+                    showNotification('Demo data inserted successfully!', 'success');
+                    
                     // Reload the data on all tabs
                     loadDashboardCounts();
                     loadVehicles();
@@ -34,16 +45,61 @@ document.addEventListener('DOMContentLoaded', () => {
                     loadAlerts();
                 } else {
                     console.error('Error inserting demo data:', result.error);
+                    showNotification('Error inserting demo data', 'error');
                 }
             } catch (error) {
                 console.error('Error inserting demo data:', error);
+                showNotification('Error inserting demo data', 'error');
             } finally {
                 insertDemoDataBtn.disabled = false;
                 insertDemoDataBtn.textContent = 'Insert Demo Data';
+                
+                // Remove loading animation
+                document.querySelectorAll('.dashboard-card').forEach(card => {
+                    card.classList.remove('loading');
+                });
             }
         });
     }
 });
+
+// Add splash effect to dashboard
+function addSplashEffect() {
+    const container = document.querySelector('.container');
+    if (container) {
+        container.classList.add('fade-in');
+        
+        // Add staggered animations to dashboard cards
+        const cards = document.querySelectorAll('.dashboard-card');
+        cards.forEach((card, index) => {
+            card.style.animationDelay = `${0.1 + (index * 0.1)}s`;
+        });
+    }
+}
+
+// Show notification
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    
+    // Add to document
+    document.body.appendChild(notification);
+    
+    // Trigger animation
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 10);
+    
+    // Remove after delay
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    }, 3000);
+}
 
 // Tab functionality
 function initializeTabs() {

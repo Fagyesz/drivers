@@ -44,6 +44,12 @@ h1, h2, h3, h4, h5, h6 {
   max-width: 1200px;
   margin: 0 auto;
   padding: 1rem;
+  opacity: 0;
+  animation: fadeIn 0.5s ease forwards;
+}
+
+.container.fade-in {
+  opacity: 1;
 }
 
 .header {
@@ -55,6 +61,18 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: var(--shadow);
   border-radius: var(--border-radius);
   margin-bottom: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  background: linear-gradient(to right, var(--primary-color), var(--accent-color));
 }
 
 .app-title {
@@ -70,6 +88,10 @@ h1, h2, h3, h4, h5, h6 {
 .app-logo {
   width: 40px;
   height: 40px;
+  border-radius: 8px;
+  object-fit: contain;
+  margin-right: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Tab system */
@@ -201,6 +223,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: 1.5rem;
   box-shadow: var(--shadow);
   transition: transform var(--anim-speed) ease, box-shadow var(--anim-speed) ease;
+  animation: fadeInUp 0.5s ease;
 }
 
 .dashboard-card:hover {
@@ -302,20 +325,31 @@ h1, h2, h3, h4, h5, h6 {
   background-color: var(--primary-color);
   color: white;
   border: none;
-  border-radius: 4px;
-  padding: 0.6rem 1.2rem;
+  border-radius: var(--border-radius);
+  padding: 8px 16px;
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color var(--anim-speed) ease;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.button:hover, .action-btn:hover {
+.button:hover {
   background-color: var(--primary-light);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
-.button:active, .action-btn:active {
-  background-color: var(--primary-dark);
+.button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .button.secondary {
@@ -463,44 +497,50 @@ h1, h2, h3, h4, h5, h6 {
 /* Notifications */
 .notification {
   position: fixed;
-  bottom: 20px;
+  top: 20px;
   right: 20px;
-  padding: 1rem 1.5rem;
-  background-color: var(--card-background);
-  border-radius: var(--border-radius);
+  padding: 12px 20px;
+  background-color: #333;
+  color: white;
+  border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transform: translateY(100px);
-  opacity: 0;
-  transition: transform var(--anim-speed) ease, opacity var(--anim-speed) ease;
   z-index: 1000;
-  max-width: 400px;
+  transform: translateX(120%);
+  transition: transform 0.3s ease;
+  max-width: 300px;
 }
 
-.notification.visible {
-  transform: translateY(0);
-  opacity: 1;
+.notification.show {
+  transform: translateX(0);
 }
 
 .notification.success {
-  border-left: 4px solid var(--success-color);
+  background-color: var(--success-color);
 }
 
 .notification.error {
-  border-left: 4px solid var(--error-color);
-}
-
-.notification.warning {
-  border-left: 4px solid var(--warning-color);
+  background-color: var(--error-color);
 }
 
 .notification.info {
-  border-left: 4px solid var(--primary-color);
+  background-color: var(--primary-color);
 }
 
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Responsive styles */
@@ -546,4 +586,41 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   gap: 1rem;
   align-items: center;
+}
+
+/* Staggered card animations */
+.dashboard-card:nth-child(1) { animation-delay: 0.1s; }
+.dashboard-card:nth-child(2) { animation-delay: 0.2s; }
+.dashboard-card:nth-child(3) { animation-delay: 0.3s; }
+.dashboard-card:nth-child(4) { animation-delay: 0.4s; }
+
+/* Loading state for dashboard cards */
+.dashboard-card.loading {
+  position: relative;
+  overflow: hidden;
+}
+
+.dashboard-card.loading::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0.2),
+    rgba(255, 255, 255, 0)
+  );
+  animation: shine 1.5s infinite;
+}
+
+@keyframes shine {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 } 

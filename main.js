@@ -16,16 +16,28 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: path.join(__dirname, 'assets/app-ico.ico'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
-    }
+    },
+    show: false,
+    backgroundColor: '#f8f8f8',
+    minWidth: 800,
+    minHeight: 600
   });
 
   mainWindow.loadFile('index.html');
   
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // Show window when ready to avoid flicker
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+  
+  // Open the DevTools in development mode
+  if (process.argv.includes('--dev')) {
+    mainWindow.webContents.openDevTools();
+  }
 
   // Log any errors from the renderer
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
