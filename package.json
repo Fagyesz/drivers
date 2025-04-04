@@ -1,0 +1,55 @@
+{
+  "name": "driverallerts",
+  "version": "1.0.0",
+  "description": "Excel to SQLite data importer for driver and vehicle management",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "rebuild": "electron-rebuild -f -w sqlite3",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.driverallerts.app",
+    "productName": "DriverAlerts",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    }
+  },
+  "keywords": [
+    "electron",
+    "excel",
+    "sqlite",
+    "driver",
+    "vehicle",
+    "management"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^7.0.1",
+    "@mui/material": "^7.0.1",
+    "better-sqlite3": "^11.9.1",
+    "electron": "^26.6.10",
+    "electron-builder": "^24.13.3",
+    "electron-store": "^8.2.0",
+    "exceljs": "^4.4.0",
+    "moment": "^2.29.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.4.1",
+    "sequelize": "^6.37.7",
+    "sqlite3": "^5.1.7",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron-rebuild": "^3.2.9"
+  }
+}

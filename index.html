@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+    <title>Driver Allerts - Vehicle Monitoring System</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="reset-modal.js"></script>
+    <!-- Add module exports check script -->
+    <script>
+        // Ensure modules are available globally
+        window.checkModules = function() {
+            console.log('Checking module exports...');
+            if (typeof window.ImportManager !== 'function') {
+                console.error('ImportManager is not defined globally');
+            } else {
+                console.log('ImportManager is available globally');
+            }
+            
+            if (typeof window.MappingUI !== 'function') {
+                console.error('MappingUI is not defined globally');
+            } else {
+                console.log('MappingUI is available globally');
+            }
+            
+            if (typeof window.ExcelPreview !== 'function') {
+                console.error('ExcelPreview is not defined globally');
+            } else {
+                console.log('ExcelPreview is available globally');
+            }
+        }
+        
+        // Ensure class is globally accessible
+        window.makeGlobal = function() {
+            try {
+                if (typeof ExcelPreview === 'function' && !window.ExcelPreview) {
+                    window.ExcelPreview = ExcelPreview;
+                    console.log('Exported ExcelPreview to window');
+                }
+                
+                if (typeof MappingUI === 'function' && !window.MappingUI) {
+                    window.MappingUI = MappingUI;
+                    console.log('Exported MappingUI to window');
+                }
+                
+                if (typeof ImportManager === 'function' && !window.ImportManager) {
+                    window.ImportManager = ImportManager;
+                    console.log('Exported ImportManager to window');
+                }
+            } catch (e) {
+                console.error('Error making classes global:', e);
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="app-title">
+                <img src="assets/icon.png" alt="App Logo" class="app-logo">
+                <h1>Driver Allerts</h1>
+            </div>
+            <div class="app-version">v1.0.0</div>
+        </header>
+
+        <div class="tab-container">
+            <div class="tab-buttons">
+                <button class="tab-btn active" data-tab="dashboard-tab">Dashboard</button>
+                <button class="tab-btn" data-tab="vehicles-tab">Vehicles</button>
+                <button class="tab-btn" data-tab="people-tab">People</button>
+                <button class="tab-btn" data-tab="rounds-tab">Rounds</button>
+                <button class="tab-btn" data-tab="alerts-tab">Alerts</button>
+                <button class="tab-btn" data-tab="import-tab">Import</button>
+            </div>
+
+            <!-- Dashboard Tab -->
+            <div id="dashboard-tab" class="tab-pane active">
+                <div class="dashboard-header">
+                    <h2>Dashboard</h2>
+                    <div class="dashboard-actions">
+                        <button class="refresh-btn" title="Refresh Data">🔄</button>
+                        <button id="insert-demo-data-btn" class="button">Insert Demo Data</button>
+                    </div>
+                </div>
+                
+                <div class="dashboard-cards">
+                    <div class="dashboard-card">
+                        <h3>Vehicles</h3>
+                        <div id="vehicles-count" class="count">0</div>
+                    </div>
+                    <div class="dashboard-card">
+                        <h3>People</h3>
+                        <div id="people-count" class="count">0</div>
+                    </div>
+                    <div class="dashboard-card">
+                        <h3>Rounds</h3>
+                        <div id="rounds-count" class="count">0</div>
+                    </div>
+                    <div class="dashboard-card">
+                        <h3>Alerts</h3>
+                        <div id="alerts-count" class="count">0</div>
+                    </div>
+                </div>
+                
+                <div class="recent-activity">
+                    <h3>Recent Activity</h3>
+                    <p>Import and process data to see recent activity.</p>
+                </div>
+            </div>
+
+            <!-- Vehicles Tab -->
+            <div id="vehicles-tab" class="tab-pane">
+                <div class="section-header">
+                    <h2>Vehicles</h2>
+                    <button class="refresh-btn" title="Refresh Data">🔄</button>
+                </div>
+                <div class="data-container">
+                    <!-- Vehicle data will be dynamically inserted here -->
+                </div>
+            </div>
+
+            <!-- People Tab -->
+            <div id="people-tab" class="tab-pane">
+                <div class="section-header">
+                    <h2>People</h2>
+                    <button class="refresh-btn" title="Refresh Data">🔄</button>
+                </div>
+                <div class="data-container">
+                    <!-- People data will be dynamically inserted here -->
+                </div>
+            </div>
+
+            <!-- Rounds Tab -->
+            <div id="rounds-tab" class="tab-pane">
+                <div class="section-header">
+                    <h2>Rounds</h2>
+                    <button class="refresh-btn" title="Refresh Data">🔄</button>
+                </div>
+                <div class="data-container">
+                    <!-- Rounds data will be dynamically inserted here -->
+                </div>
+            </div>
+
+            <!-- Alerts Tab -->
+            <div id="alerts-tab" class="tab-pane">
+                <div class="section-header">
+                    <h2>Alerts</h2>
+                    <button class="refresh-btn" title="Refresh Data">🔄</button>
+                </div>
+                <div class="data-container">
+                    <!-- Alert data will be dynamically inserted here -->
+                </div>
+            </div>
+
+            <!-- Import Tab -->
+            <div id="import-tab" class="tab-pane">
+                <div class="section-header">
+                    <h2>Import Data</h2>
+                </div>
+                
+                <div class="import-section">
+                    <h3>Import Excel Data</h3>
+                    <p>Select an Excel file to import vehicle movements, stop events, or time records.</p>
+                    
+                    <div class="file-input-container">
+                        <button id="select-file-btn" class="button">Select Excel File</button>
+                        <div id="selected-file-path" class="file-name-display">No file selected</div>
+                    </div>
+                    
+                    <div id="import-status" class="status-message"></div>
+                    
+                    <div class="import-controls">
+                        <button id="import-data-btn" class="button" disabled>Process Imported Data</button>
+                        <button id="clear-import-btn" class="button secondary">Clear</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading indicator overlay -->
+    <div id="import-loading">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Modal for confirmations and alerts -->
+    <div id="modal-container" class="modal-container">
+        <div class="modal-backdrop"></div>
+        <div class="modal">
+            <div class="modal-header">
+                <div id="modal-title">Modal Title</div>
+                <button class="modal-close-btn">×</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Modal content will be inserted here -->
+            </div>
+            <div class="modal-footer">
+                <button id="modal-cancel-btn" class="secondary">Cancel</button>
+                <button id="modal-confirm-btn">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="renderer-basic.js"></script>
+</body>
+</html> 

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DriverAlerts - Excel Import & Data Management</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;500;600;700&display=swap">
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="logo">
+                <img src="../assets/logo.png" alt="DriverAlerts Logo">
+                <h1>DriverAlerts</h1>
+            </div>
+            <ul class="nav-links">
+                <li class="nav-item active" data-page="dashboard">
+                    <i class="fas fa-home"></i>
+                    <span>Dashboard</span>
+                </li>
+                <li class="nav-item" data-page="import">
+                    <i class="fas fa-file-import"></i>
+                    <span>Data Import</span>
+                </li>
+                <li class="nav-item" data-page="drivers">
+                    <i class="fas fa-user"></i>
+                    <span>Drivers</span>
+                </li>
+                <li class="nav-item" data-page="vehicles">
+                    <i class="fas fa-truck"></i>
+                    <span>Vehicles</span>
+                </li>
+                <li class="nav-item" data-page="rounds">
+                    <i class="fas fa-route"></i>
+                    <span>Rounds</span>
+                </li>
+                <li class="nav-item" data-page="addresses">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>Addresses</span>
+                </li>
+                <li class="nav-item" data-page="alerts">
+                    <i class="fas fa-bell"></i>
+                    <span>Alerts</span>
+                </li>
+                <li class="nav-item" data-page="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Page Header -->
+            <header class="page-header">
+                <h2 id="page-title">Dashboard</h2>
+                <div class="header-actions">
+                    <button class="refresh-btn">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <div class="search-container">
+                        <input type="text" placeholder="Search...">
+                        <i class="fas fa-search"></i>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Page Content Container -->
+            <div class="page-container">
+                <!-- Dashboard Page (Default View) -->
+                <div class="page active" id="dashboard-page">
+                    <div class="dashboard-grid">
+                        <div class="card stat-card">
+                            <div class="card-content">
+                                <h3>Active Drivers</h3>
+                                <div class="stat-value">0</div>
+                            </div>
+                            <div class="card-icon driver-icon">
+                                <i class="fas fa-user"></i>
+                            </div>
+                        </div>
+                        <div class="card stat-card">
+                            <div class="card-content">
+                                <h3>Active Vehicles</h3>
+                                <div class="stat-value">0</div>
+                            </div>
+                            <div class="card-icon vehicle-icon">
+                                <i class="fas fa-truck"></i>
+                            </div>
+                        </div>
+                        <div class="card stat-card">
+                            <div class="card-content">
+                                <h3>Rounds Today</h3>
+                                <div class="stat-value">0</div>
+                            </div>
+                            <div class="card-icon round-icon">
+                                <i class="fas fa-route"></i>
+                            </div>
+                        </div>
+                        <div class="card stat-card">
+                            <div class="card-content">
+                                <h3>Active Alerts</h3>
+                                <div class="stat-value alert-count">0</div>
+                            </div>
+                            <div class="card-icon alert-icon">
+                                <i class="fas fa-bell"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3>Recent Activity</h3>
+                        </div>
+                        <div class="card-content">
+                            <div class="placeholder-chart">
+                                <p>Activity chart will be displayed here</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-row">
+                        <div class="card latest-alerts">
+                            <div class="card-header">
+                                <h3>Latest Alerts</h3>
+                                <a href="#" class="view-all">View All</a>
+                            </div>
+                            <div class="card-content">
+                                <p class="no-data-message">No alerts to display</p>
+                            </div>
+                        </div>
+
+                        <div class="card recent-imports">
+                            <div class="card-header">
+                                <h3>Recent Imports</h3>
+                                <a href="#" class="view-all">View All</a>
+                            </div>
+                            <div class="card-content">
+                                <p class="no-data-message">No recent imports</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Import Page -->
+                <div class="page" id="import-page">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Import Excel Data</h3>
+                        </div>
+                        <div class="card-content">
+                            <div class="import-area">
+                                <div class="file-drop-area">
+                                    <i class="fas fa-file-excel file-icon"></i>
+                                    <p>Drag & drop your Excel file here or</p>
+                                    <button class="btn primary-btn" id="select-excel-btn">Select File</button>
+                                </div>
+                                
+                                <div class="import-info" style="display: none;">
+                                    <div class="file-info">
+                                        <span class="file-name">filename.xlsx</span>
+                                        <span class="file-size">0 KB</span>
+                                        <button class="btn text-btn remove-file-btn"><i class="fas fa-times"></i></button>
+                                    </div>
+                                    
+                                    <div class="import-options">
+                                        <div class="form-group">
+                                            <label for="sheet-select">Select Sheet:</label>
+                                            <select id="sheet-select" class="form-control"></select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="import-type">Import Type:</label>
+                                            <select id="import-type" class="form-control">
+                                                <option value="drivers">Drivers</option>
+                                                <option value="vehicles">Vehicles</option>
+                                                <option value="rounds">Rounds</option>
+                                                <option value="addresses">Addresses</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="preview-container">
+                                        <h4>Data Preview</h4>
+                                        <div class="preview-table-container">
+                                            <table id="preview-table" class="data-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>No data to preview</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td>Select a file to preview data</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="column-mapping" style="display: none;">
+                                        <h4>Column Mapping</h4>
+                                        <p>Map Excel columns to database fields:</p>
+                                        <div id="mapping-container">
+                                            <!-- Mapping controls will be added dynamically -->
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="import-actions">
+                                        <button class="btn secondary-btn" id="preview-btn">Preview Data</button>
+                                        <button class="btn primary-btn" id="start-import-btn" disabled>Start Import</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Other page containers will be added for drivers, vehicles, etc. -->
+                
+                <!-- Settings Page -->
+                <div class="page" id="settings-page">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Application Settings</h3>
+                        </div>
+                        <div class="card-content">
+                            <div class="settings-group">
+                                <h4>Database Settings</h4>
+                                <div class="form-group">
+                                    <label for="db-location">Database Location:</label>
+                                    <div class="input-with-button">
+                                        <input type="text" id="db-location" class="form-control" readonly>
+                                        <button class="btn secondary-btn" id="select-db-location-btn">Change</button>
+                                    </div>
+                                </div>
+                                <div class="form-actions">
+                                    <button class="btn secondary-btn" id="backup-db-btn">Backup Database</button>
+                                    <button class="btn warning-btn" id="reset-db-btn">Reset Database</button>
+                                </div>
+                            </div>
+                            
+                            <div class="settings-group">
+                                <h4>Import Settings</h4>
+                                <div class="form-group">
+                                    <label for="default-import-type">Default Import Type:</label>
+                                    <select id="default-import-type" class="form-control">
+                                        <option value="drivers">Drivers</option>
+                                        <option value="vehicles">Vehicles</option>
+                                        <option value="rounds">Rounds</option>
+                                        <option value="addresses">Addresses</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="date-format">Date Format:</label>
+                                    <select id="date-format" class="form-control">
+                                        <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                                        <option value="DD-MM-YYYY">DD-MM-YYYY</option>
+                                        <option value="MM-DD-YYYY">MM-DD-YYYY</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="settings-group">
+                                <h4>Alert Settings</h4>
+                                <div class="form-group">
+                                    <label for="packtime-alert-threshold">Packtime Alert Threshold (min):</label>
+                                    <input type="number" id="packtime-alert-threshold" class="form-control" value="30">
+                                </div>
+                                <div class="form-group">
+                                    <label for="stop-alert-duration">Stop Alert Duration (min):</label>
+                                    <input type="number" id="stop-alert-duration" class="form-control" value="30">
+                                </div>
+                                <div class="checkbox-group">
+                                    <input type="checkbox" id="enable-notifications" checked>
+                                    <label for="enable-notifications">Enable Desktop Notifications</label>
+                                </div>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button class="btn primary-btn" id="save-settings-btn">Save Settings</button>
+                                <button class="btn secondary-btn" id="reset-settings-btn">Reset to Default</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal component -->
+    <div class="modal" id="main-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Modal Title</h3>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                Modal content will be here
+            </div>
+            <div class="modal-footer">
+                <button class="btn secondary-btn" id="modal-cancel-btn">Cancel</button>
+                <button class="btn primary-btn" id="modal-confirm-btn">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notification component -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="js/renderer.js"></script>
+</body>
+</html> 
