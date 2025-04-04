@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
-    <title>FAQ - Driver Alerts</title>
+    <title>Help - Driver Alerts</title>
     <link rel="stylesheet" href="../styles.css">
 </head>
 <body>
@@ -12,69 +12,374 @@
         <header class="header">
             <div class="app-title">
                 <img src="../assets/app-ico.ico" alt="App Logo" class="app-logo">
-                <h1>Driver Alerts - FAQ</h1>
+                <h1>Driver Alerts - Help</h1>
             </div>
             <div class="header-actions">
-                <button id="view-logs-btn" class="button">View Application Logs</button>
                 <button id="back-btn" class="button secondary">Back to Application</button>
             </div>
         </header>
 
-        <div class="content-area">
-            <h2>Frequently Asked Questions</h2>
-            
-            <div class="faq-container">
-                <div class="faq-item">
-                    <h3>What is Driver Alerts?</h3>
-                    <p>Driver Alerts is a vehicle monitoring system that helps you track vehicles, drivers, routes, and alerts related to your fleet management.</p>
-                </div>
+        <div class="tab-container">
+            <div class="tab-buttons">
+                <button class="tab-btn active" data-tab="faq-tab">FAQ</button>
+                <button class="tab-btn" data-tab="logs-tab">Application Logs</button>
+            </div>
 
-                <div class="faq-item">
-                    <h3>How do I import data?</h3>
-                    <p>Go to the Import tab and click "Select Excel File". Choose your Excel file containing vehicle or driver data, then click "Process Imported Data".</p>
-                </div>
+            <!-- FAQ Tab -->
+            <div id="faq-tab" class="tab-pane active">
+                <div class="content-area">
+                    <h2>Frequently Asked Questions</h2>
+                    
+                    <div class="faq-container">
+                        <div class="faq-item">
+                            <h3>What is Driver Alerts?</h3>
+                            <p>Driver Alerts is a vehicle monitoring system that helps you track vehicles, drivers, routes, and alerts related to your fleet management.</p>
+                        </div>
 
-                <div class="faq-item">
-                    <h3>What formats are supported for import?</h3>
-                    <p>Driver Alerts supports Excel files (.xlsx, .xls) for data import. The system can recognize sheets for Vehicles, People, and Rounds data.</p>
-                </div>
+                        <div class="faq-item">
+                            <h3>How do I import data?</h3>
+                            <p>Go to the Import tab and click "Select Excel File". Choose your Excel file containing vehicle or driver data, then click "Process Imported Data".</p>
+                        </div>
 
-                <div class="faq-item">
-                    <h3>How do I view alerts?</h3>
-                    <p>Click on the "Alerts" tab to view all system-generated alerts, such as license expirations or vehicle maintenance reminders.</p>
-                </div>
+                        <div class="faq-item">
+                            <h3>What formats are supported for import?</h3>
+                            <p>Driver Alerts supports Excel files (.xlsx, .xls) for data import. The system can recognize sheets for Vehicles, People, and Rounds data.</p>
+                        </div>
 
-                <div class="faq-item">
-                    <h3>Can I export my data?</h3>
-                    <p>Currently, export functionality is not implemented. This feature will be added in a future update.</p>
-                </div>
+                        <div class="faq-item">
+                            <h3>How do I view alerts?</h3>
+                            <p>Click on the "Alerts" tab to view all system-generated alerts, such as license expirations or vehicle maintenance reminders.</p>
+                        </div>
 
-                <div class="faq-item">
-                    <h3>Where is my data stored?</h3>
-                    <p>All data is stored locally on your computer in a SQLite database in the application data folder.</p>
-                </div>
+                        <div class="faq-item">
+                            <h3>Can I export my data?</h3>
+                            <p>Currently, export functionality is not implemented. This feature will be added in a future update.</p>
+                        </div>
 
-                <div class="faq-item">
-                    <h3>How do I back up my data?</h3>
-                    <p>The database file is located in your application data folder. You can manually copy this file to create a backup.</p>
-                </div>
+                        <div class="faq-item">
+                            <h3>Where is my data stored?</h3>
+                            <p>All data is stored locally on your computer in a SQLite database in the application data folder.</p>
+                        </div>
 
-                <div class="faq-item">
-                    <h3>How can I troubleshoot issues?</h3>
-                    <p>For developers and advanced users, you can view the application logs by clicking the "View Application Logs" button at the top of this page. These logs provide detailed information about what's happening in the application, which can help diagnose problems.</p>
+                        <div class="faq-item">
+                            <h3>How do I back up my data?</h3>
+                            <p>The database file is located in your application data folder. You can manually copy this file to create a backup.</p>
+                        </div>
+
+                        <div class="faq-item">
+                            <h3>How can I troubleshoot issues?</h3>
+                            <p>For developers and advanced users, you can view the application logs by clicking the "Application Logs" tab above. These logs provide detailed information about what's happening in the application, which can help diagnose problems.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs Tab -->
+            <div id="logs-tab" class="tab-pane">
+                <div class="content-area">
+                    <div class="logs-controls">
+                        <div class="form-group">
+                            <label for="log-level-filter">Filter by Level:</label>
+                            <select id="log-level-filter">
+                                <option value="all">All Levels</option>
+                                <option value="error">Errors Only</option>
+                                <option value="warn">Warnings & Errors</option>
+                                <option value="info">Info & Above</option>
+                                <option value="debug">Debug & Above</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="log-search">Search Logs:</label>
+                            <input type="text" id="log-search" placeholder="Filter by keyword...">
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button id="refresh-logs-btn" class="button">Refresh</button>
+                            <button id="clear-logs-btn" class="button secondary">Clear</button>
+                            <button id="export-logs-btn" class="button">Export</button>
+                        </div>
+                    </div>
+                    
+                    <div class="logs-container">
+                        <pre id="logs-output" class="logs-output">Loading logs...</pre>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        document.getElementById('back-btn').addEventListener('click', () => {
-            window.history.back();
-        });
-        
-        document.getElementById('view-logs-btn').addEventListener('click', () => {
-            window.location.href = 'logs-viewer.html';
-        });
+        window.onload = function() {
+            try {
+                console.log('Window loaded in Help page');
+                const electron = require('electron');
+                const ipcRenderer = electron.ipcRenderer;
+                const fs = require('fs');
+                const path = require('path');
+                
+                console.log('Electron modules loaded successfully');
+                
+                // Get elements
+                const backBtn = document.getElementById('back-btn');
+                const tabButtons = document.querySelectorAll('.tab-btn');
+                const tabPanes = document.querySelectorAll('.tab-pane');
+                
+                // Logs viewer elements
+                const logsOutput = document.getElementById('logs-output');
+                const refreshLogsBtn = document.getElementById('refresh-logs-btn');
+                const clearLogsBtn = document.getElementById('clear-logs-btn');
+                const exportLogsBtn = document.getElementById('export-logs-btn');
+                const logLevelFilter = document.getElementById('log-level-filter');
+                const logSearch = document.getElementById('log-search');
+                
+                let currentLogs = '';
+                let filteredLogs = '';
+                
+                // Initialize tab system
+                tabButtons.forEach(button => {
+                    button.addEventListener('click', () => {
+                        const tabId = button.getAttribute('data-tab');
+                        console.log('Tab clicked:', tabId);
+                        
+                        // Update active tab button
+                        tabButtons.forEach(btn => btn.classList.remove('active'));
+                        button.classList.add('active');
+                        
+                        // Show selected tab content
+                        tabPanes.forEach(pane => {
+                            pane.classList.remove('active');
+                            if (pane.id === tabId) {
+                                pane.classList.add('active');
+                                console.log('Activated tab pane:', tabId);
+                                
+                                // Load logs if switching to logs tab
+                                if (tabId === 'logs-tab') {
+                                    loadLogs();
+                                }
+                            }
+                        });
+                    });
+                });
+                
+                // Handle back button click
+                if (backBtn) {
+                    backBtn.addEventListener('click', function() {
+                        console.log('Back button clicked');
+                        try {
+                            ipcRenderer.send('close-current-window');
+                        } catch (e) {
+                            console.error('IPC close failed:', e);
+                            window.close();
+                        }
+                    });
+                }
+                
+                // Handle refresh logs button
+                if (refreshLogsBtn) {
+                    refreshLogsBtn.addEventListener('click', function() {
+                        console.log('Refresh button clicked');
+                        loadLogs();
+                    });
+                }
+                
+                // Handle clear logs button
+                if (clearLogsBtn) {
+                    clearLogsBtn.addEventListener('click', async function() {
+                        console.log('Clear logs button clicked');
+                        try {
+                            const result = await ipcRenderer.invoke('clear-logs');
+                            if (result.success) {
+                                logsOutput.textContent = '--- Logs cleared ---';
+                                currentLogs = '';
+                                filteredLogs = '';
+                            } else {
+                                showError('Failed to clear logs: ' + result.error);
+                            }
+                        } catch (error) {
+                            showError('Error clearing logs: ' + error.message);
+                        }
+                    });
+                }
+                
+                // Handle export logs button
+                if (exportLogsBtn) {
+                    exportLogsBtn.addEventListener('click', async function() {
+                        console.log('Export logs button clicked');
+                        try {
+                            const savePath = await ipcRenderer.invoke('export-logs');
+                            if (savePath) {
+                                showMessage(`Logs exported to: ${savePath}`, 'success');
+                            }
+                        } catch (error) {
+                            showError('Error exporting logs: ' + error.message);
+                        }
+                    });
+                }
+                
+                // Handle level filter change
+                if (logLevelFilter) {
+                    logLevelFilter.addEventListener('change', function() {
+                        console.log('Log level filter changed');
+                        filterLogs();
+                    });
+                }
+                
+                // Handle search input
+                if (logSearch) {
+                    logSearch.addEventListener('input', function() {
+                        console.log('Log search input changed');
+                        filterLogs();
+                    });
+                }
+                
+                // Function to load logs
+                async function loadLogs() {
+                    console.log('Loading logs...');
+                    try {
+                        if (logsOutput) logsOutput.textContent = 'Loading logs...';
+                        currentLogs = await ipcRenderer.invoke('get-all-logs');
+                        
+                        if (!currentLogs || currentLogs.length === 0) {
+                            if (logsOutput) logsOutput.textContent = 'No logs found.';
+                            return;
+                        }
+                        
+                        filterLogs();
+                    } catch (error) {
+                        console.error('Error loading logs:', error);
+                        showError('Error loading logs: ' + error.message);
+                    }
+                }
+                
+                // Function to filter logs
+                function filterLogs() {
+                    console.log('Filtering logs...');
+                    if (!logLevelFilter || !logsOutput) return;
+                    
+                    const level = logLevelFilter.value;
+                    const searchText = logSearch ? logSearch.value.toLowerCase() : '';
+                    
+                    // Start with all logs
+                    let logs = currentLogs;
+                    
+                    // Filter by level
+                    if (level !== 'all') {
+                        const lines = logs.split('\n');
+                        const filteredLines = lines.filter(line => {
+                            const lowerLine = line.toLowerCase();
+                            
+                            if (level === 'error') {
+                                return lowerLine.includes('[error]');
+                            } else if (level === 'warn') {
+                                return lowerLine.includes('[error]') || lowerLine.includes('[warn]');
+                            } else if (level === 'info') {
+                                return lowerLine.includes('[error]') || lowerLine.includes('[warn]') || lowerLine.includes('[info]');
+                            } else if (level === 'debug') {
+                                return lowerLine.includes('[error]') || lowerLine.includes('[warn]') || 
+                                      lowerLine.includes('[info]') || lowerLine.includes('[debug]');
+                            }
+                            
+                            return true;
+                        });
+                        
+                        logs = filteredLines.join('\n');
+                    }
+                    
+                    // Filter by search text
+                    if (searchText) {
+                        const lines = logs.split('\n');
+                        const filteredLines = lines.filter(line => 
+                            line.toLowerCase().includes(searchText)
+                        );
+                        
+                        logs = filteredLines.join('\n');
+                    }
+                    
+                    // Update filtered logs and display
+                    filteredLogs = logs;
+                    
+                    // Apply syntax highlighting
+                    logsOutput.innerHTML = highlightLogSyntax(filteredLogs);
+                    
+                    // Display message if no logs match the filters
+                    if (!filteredLogs.trim()) {
+                        logsOutput.textContent = 'No logs match the current filters.';
+                    }
+                }
+                
+                // Function to highlight log syntax
+                function highlightLogSyntax(logText) {
+                    if (!logText) return '';
+                    
+                    return logText
+                        .replace(/\[ERROR\]/gi, '<span class="log-error">[ERROR]</span>')
+                        .replace(/\[WARN\]/gi, '<span class="log-warn">[WARN]</span>')
+                        .replace(/\[INFO\]/gi, '<span class="log-info">[INFO]</span>')
+                        .replace(/\[DEBUG\]/gi, '<span class="log-debug">[DEBUG]</span>')
+                        .replace(/\[(.*?)\]/g, '<span class="log-timestamp">[$1]</span>')
+                        .replace(/{.*}/g, match => `<span class="log-json">${match}</span>`);
+                }
+                
+                // Function to show error message
+                function showError(message) {
+                    console.error(message);
+                    if (logsOutput) {
+                        logsOutput.innerHTML = `<span class="log-error">ERROR: ${message}</span>`;
+                    }
+                }
+                
+                // Function to show success/info message
+                function showMessage(message, type = 'info') {
+                    console.log(message);
+                    if (!logsOutput) return;
+                    
+                    const tempContent = logsOutput.innerHTML;
+                    
+                    // Show message at the top
+                    logsOutput.innerHTML = `<div class="log-message ${type}">${message}</div>${tempContent}`;
+                    
+                    // Remove message after 3 seconds
+                    setTimeout(() => {
+                        const messageElem = logsOutput.querySelector('.log-message');
+                        if (messageElem) {
+                            messageElem.remove();
+                        }
+                    }, 3000);
+                }
+
+                // Listen for messages from main process
+                if (ipcRenderer) {
+                    ipcRenderer.on('switch-to-logs-tab', () => {
+                        console.log('Received switch-to-logs-tab message');
+                        // Find logs tab button and click it
+                        const logsTabBtn = document.querySelector('.tab-btn[data-tab="logs-tab"]');
+                        if (logsTabBtn) {
+                            logsTabBtn.click();
+                        }
+                    });
+                    
+                    ipcRenderer.on('switch-to-faq-tab', () => {
+                        console.log('Received switch-to-faq-tab message');
+                        // Find FAQ tab button and click it
+                        const faqTabBtn = document.querySelector('.tab-btn[data-tab="faq-tab"]');
+                        if (faqTabBtn) {
+                            faqTabBtn.click();
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error in Help page initialization:', error);
+                // Show error in the UI for debugging
+                const errorDiv = document.createElement('div');
+                errorDiv.style.color = 'red';
+                errorDiv.style.padding = '10px';
+                errorDiv.style.margin = '10px 0';
+                errorDiv.style.border = '1px solid red';
+                errorDiv.innerHTML = `<strong>Error initializing:</strong> ${error.message}`;
+                document.body.prepend(errorDiv);
+            }
+        };
     </script>
 </body>
 </html> 

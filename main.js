@@ -188,15 +188,9 @@ function createApplicationMenu() {
         },
         { type: 'separator' },
         {
-          label: 'FAQ',
+          label: 'Help Center',
           click: () => {
-            createFaqWindow();
-          }
-        },
-        {
-          label: 'View Application Logs',
-          click: () => {
-            createLogsViewerWindow();
+            createHelpWindow();
           }
         }
       ]
@@ -207,11 +201,11 @@ function createApplicationMenu() {
   Menu.setApplicationMenu(menu);
 }
 
-// Create FAQ window
-function createFaqWindow() {
-  const faqWindow = new BrowserWindow({
-    width: 900,
-    height: 700,
+// Create Help window (combining FAQ and logs)
+function createHelpWindow() {
+  const helpWindow = new BrowserWindow({
+    width: 1000,
+    height: 800,
     parent: mainWindow,
     modal: false,
     icon: path.join(__dirname, 'assets/app-ico.ico'),
@@ -221,30 +215,38 @@ function createFaqWindow() {
     }
   });
   
-  faqWindow.loadFile('src/faq.html');
+  helpWindow.loadFile('src/faq.html');
   
   // Log window creation
-  logger.info('FAQ window opened');
+  logger.info('Help window opened');
+  
+  // Add debugging events
+  helpWindow.webContents.on('did-finish-load', () => {
+    console.log('Help window content loaded');
+  });
+  
+  helpWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Failed to load Help window:', errorCode, errorDescription);
+  });
+  
+  // Enable DevTools for debugging if in dev mode
+  if (process.argv.includes('--dev')) {
+    helpWindow.webContents.openDevTools();
+  }
 }
 
-// Create issue logger window
-function createIssueLoggerWindow() {
-  const issueLoggerWindow = new BrowserWindow({
-    width: 800,
-    height: 700,
-    parent: mainWindow,
-    modal: false,
-    icon: path.join(__dirname, 'assets/app-ico.ico'),
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
-    }
+// Deprecate these separate window functions
+// They're kept for backwards compatibility
+function createFaqWindow() {
+  createHelpWindow();
+}
+
+function createLogsViewerWindow() {
+  const helpWindow = createHelpWindow();
+  // Send message to switch to logs tab once loaded
+  helpWindow.webContents.on('did-finish-load', () => {
+    helpWindow.webContents.send('switch-to-logs-tab');
   });
-  
-  issueLoggerWindow.loadFile('src/issue-logger.html');
-  
-  // Log window creation
-  logger.info('Issue logger window opened');
 }
 
 // Initialize the app right away
@@ -586,22 +588,52 @@ ipcMain.handle('export-logs', async () => {
   }
 });
 
-// Function to create logs viewer window
-function createLogsViewerWindow() {
-  const logsViewerWindow = new BrowserWindow({
-    width: 900,
-    height: 700,
-    parent: mainWindow,
-    modal: false,
-    icon: path.join(__dirname, 'assets/app-ico.ico'),
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
-    }
-  });
+// Add IPC handlers for window navigation with better logging
+ipcMain.on('close-current-window', (event) => {
+  console.log('Received close-current-window IPC message');
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    console.log('Closing window');
+    win.close();
+  } else {
+    console.error('Could not find window to close');
+  }
+});
+
+// This is kept for backwards compatibility but is no longer needed
+ipcMain.on('open-logs-viewer', (event) => {
+  console.log('Received open-logs-viewer IPC message');
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    // Instead of opening a new window, just send a message to switch tabs
+    win.webContents.send('switch-to-logs-tab');
+  } else {
+    console.error('Could not find parent window for logs viewer');
+  }
+});
+
+// This is kept for backwards compatibility but is no longer needed
+ipcMain.on('close-logs-viewer', (event) => {
+  console.log('Received close-logs-viewer IPC message');
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    console.log('Closing logs viewer window');
+    // Instead of closing, switch back to FAQ tab
+    win.webContents.send('switch-to-faq-tab');
+  } else {
+    console.error('Could not find logs viewer window to close');
+  }
+});
+
+// Add additional handler for opening the help center
+ipcMain.on('open-help-center', (event) => {
+  console.log('Received open-help-center IPC message');
+  // Close the current window
+  const currentWindow = BrowserWindow.fromWebContents(event.sender);
+  if (currentWindow) {
+    currentWindow.close();
+  }
   
-  logsViewerWindow.loadFile('src/logs-viewer.html');
-  
-  // Log window creation
-  logger.info('Logs viewer window opened');
-} 
+  // Open the help center
+  createHelpWindow();
+}); 

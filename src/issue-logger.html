@@ -4,71 +4,70 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
-    <title>Issue Logger - Driver Alerts</title>
-    <link rel="stylesheet" href="../styles.css">
+    <title>Redirecting - Driver Alerts</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            padding: 20px;
+            text-align: center;
+            background-color: #f8f8f8;
+        }
+        .message {
+            margin: 50px auto;
+            max-width: 500px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        button:hover {
+            background-color: #0069d9;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <header class="header">
-            <div class="app-title">
-                <img src="../assets/app-ico.ico" alt="App Logo" class="app-logo">
-                <h1>Driver Alerts - Issue Logger</h1>
-            </div>
-            <button id="back-btn" class="button">Back to Application</button>
-        </header>
-
-        <div class="content-area">
-            <h2>Report an Issue</h2>
-            
-            <div class="issue-logger-container">
-                <p>Please provide details about the issue you're experiencing. This information will help us diagnose and fix the problem.</p>
-                
-                <form id="issue-form">
-                    <div class="form-group">
-                        <label for="issue-type">Issue Type</label>
-                        <select id="issue-type" required>
-                            <option value="">Select an issue type</option>
-                            <option value="bug">Bug/Error</option>
-                            <option value="feature">Feature Request</option>
-                            <option value="question">Question</option>
-                            <option value="other">Other</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="issue-title">Issue Title</label>
-                        <input type="text" id="issue-title" placeholder="Brief summary of the issue" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="issue-description">Description</label>
-                        <textarea id="issue-description" rows="5" placeholder="Please describe the issue in detail. Include steps to reproduce if applicable." required></textarea>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="system-info">System Information</label>
-                        <textarea id="system-info" rows="3" readonly></textarea>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="include-logs">
-                            Include application logs
-                        </label>
-                        <p class="form-note">This will automatically attach recent application logs to help with troubleshooting.</p>
-                    </div>
-                    
-                    <div class="form-actions">
-                        <button type="submit" class="button">Submit Report</button>
-                        <button type="button" id="cancel-btn" class="button secondary">Cancel</button>
-                    </div>
-                </form>
-                
-                <div id="submission-status" class="status-message"></div>
-            </div>
-        </div>
+    <div class="message">
+        <h2>Redirecting to Help Center</h2>
+        <p>You will be redirected to the Help Center in a few seconds...</p>
+        <p>If you are not redirected automatically, click the button below.</p>
+        <button id="redirect-btn">Go to Help Center</button>
     </div>
 
-    <script src="../src/issue-logger.js"></script>
+    <script>
+        // Try to use IPC if available
+        try {
+            const electron = require('electron');
+            const ipcRenderer = electron.ipcRenderer;
+            
+            // Send message to main process to open help center
+            ipcRenderer.send('open-help-center');
+            
+            // Close this window after a delay
+            setTimeout(function() {
+                window.close();
+            }, 1000);
+        } catch (e) {
+            console.error('Error using IPC:', e);
+            
+            // Fall back to direct redirect
+            setTimeout(function() {
+                window.location.href = 'faq.html';
+            }, 2000);
+            
+            // Handle button click
+            document.getElementById('redirect-btn').addEventListener('click', function() {
+                window.location.href = 'faq.html';
+            });
+        }
+    </script>
 </body>
 </html> 
