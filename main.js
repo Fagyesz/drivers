@@ -12,7 +12,8 @@ const logger = require('./src/logger');
 const issueManager = require('./src/issues');
 
 // Initialize database with the correct path
-const database = new DriverAlertsDatabase(path.join(app.getPath('userData'), 'database', 'driverAlerts.db'));
+const dbPath = path.join(app.getPath('appData'), 'driver-alerts', 'database', 'driverAlerts.db');
+const database = new DriverAlertsDatabase(dbPath);
 
 let mainWindow;
 
@@ -307,7 +308,7 @@ ipcMain.handle('select-file', async () => {
 });
 
 ipcMain.handle('get-app-data-path', () => {
-  return app.getPath('userData');
+  return path.join(app.getPath('appData'), 'driver-alerts');
 });
 
 // Database API handlers for the main entities
@@ -446,34 +447,6 @@ ipcMain.handle('get-count', async (event, table) => {
   } catch (error) {
     console.error(`Error getting count for ${table}:`, error);
     return 0;
-  }
-});
-
-// Import operations
-ipcMain.handle('import-vehicle-movements', async (event, data) => {
-  try {
-    return await database.importVehicleMovements(data);
-  } catch (error) {
-    console.error('Error importing vehicle movements:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('import-stop-events', async (event, data) => {
-  try {
-    return await database.importStopEvents(data);
-  } catch (error) {
-    console.error('Error importing stop events:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('import-time-records', async (event, data) => {
-  try {
-    return await database.importTimeRecords(data);
-  } catch (error) {
-    console.error('Error importing time records:', error);
-    throw error;
   }
 });
 

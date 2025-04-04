@@ -13,10 +13,10 @@ class Database {
     async init() {
         try {
             // Get the application data path
-            const userDataPath = app.getPath('userData');
+            const appDataPath = app.getPath('appData');
             
             // Create a 'database' directory if it doesn't exist
-            const dbDir = path.join(userDataPath, 'database');
+            const dbDir = path.join(appDataPath, 'driver-alerts', 'database');
             if (!fs.existsSync(dbDir)) {
                 fs.mkdirSync(dbDir, { recursive: true });
             }

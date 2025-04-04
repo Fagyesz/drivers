@@ -1,5 +1,5 @@
 {
-  "name": "driverallerts",
+  "name": "driver-alerts",
   "version": "1.0.0",
   "description": "Excel to SQLite data importer for driver and vehicle management",
   "main": "main.js",
@@ -11,7 +11,7 @@
     "dist": "electron-builder"
   },
   "build": {
-    "appId": "com.driverallerts.app",
+    "appId": "com.driver-alerts.app",
     "productName": "DriverAlerts",
     "directories": {
       "output": "dist"

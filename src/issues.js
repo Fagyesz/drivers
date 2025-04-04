@@ -9,7 +9,7 @@ const logger = require('./logger');
 class IssueManager {
     constructor() {
         // Set up issues directory
-        this.issuesDir = path.join(app.getPath('userData'), 'issues');
+        this.issuesDir = path.join(app.getPath('appData'), 'driver-alerts', 'issues');
         
         // Create issues directory if it doesn't exist
         if (!fs.existsSync(this.issuesDir)) {

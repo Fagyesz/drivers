@@ -9,7 +9,7 @@ class Logger {
     constructor(options = {}) {
         // Default options
         this.options = {
-            logDir: path.join(app ? app.getPath('userData') : __dirname, 'logs'),
+            logDir: path.join(app ? app.getPath('appData') : __dirname, 'driver-alerts', 'logs'),
             maxLogFiles: 10,
             maxLogSize: 5 * 1024 * 1024, // 5 MB
             logLevel: 'info',
