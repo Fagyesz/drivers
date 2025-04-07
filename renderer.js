@@ -1,53 +1,119 @@
-console.log('Renderer script started - clean version without initialization conflicts');
+// Import required modules
+const { ipcRenderer } = require('electron');
 
-// DOM Elements
-const selectFileBtn = document.getElementById('select-file-btn');
-const selectedFilePath = document.getElementById('selected-file-path');
-const importDataBtn = document.getElementById('import-data-btn');
-const importStatus = document.getElementById('import-status');
-const tabButtons = document.querySelectorAll('.tab-btn');
-const tabPanes = document.querySelectorAll('.tab-pane');
-const driverSearch = document.getElementById('driver-search');
-const vehicleSearch = document.getElementById('vehicle-search');
-const driversTableBody = document.getElementById('drivers-table-body');
-const vehiclesTableBody = document.getElementById('vehicles-table-body');
-const alertsContainer = document.getElementById('alerts-container');
+console.log('Renderer started');
 
-console.log('DOM elements found:', {
-    selectFileBtn, 
-    tabButtons: tabButtons.length,
-    tabPanes: tabPanes.length
-});
-
-// Global variables
-let excelFilePath = '';
-let drivers = [];
-let vehicles = [];
-let alerts = [];
+// Add this global flag at the top of the file, outside any functions
+let importInitialized = false;
 
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded - initializing app with fixed renderer');
+    console.log('DOM loaded - initializing renderer');
+    
+    // Add a splash effect to the dashboard
+    addSplashEffect();
     
     // Initialize tab system
-    initTabSystem();
+    initializeTabs();
     
-    // Load dashboard counts - implemented in a way that doesn't require ipc
-    loadDashboardCountsDemo();
+    // Load data counts for dashboard
+    loadDashboardCounts();
     
-    // Initialize logging
-    initializeLogging();
-
-    // Initialize enhanced import functionality
-    initializeEnhancedImport();
+    // Add event listener for demo data button
+    const insertDemoDataBtn = document.getElementById('insert-demo-data-btn');
+    if (insertDemoDataBtn) {
+        insertDemoDataBtn.addEventListener('click', async () => {
+            try {
+                console.log('Inserting demo data...');
+                insertDemoDataBtn.disabled = true;
+                insertDemoDataBtn.textContent = 'Loading...';
+                
+                // Add loading animation to dashboard cards
+                document.querySelectorAll('.dashboard-card').forEach(card => {
+                    card.classList.add('loading');
+                });
+                
+                const result = await ipcRenderer.invoke('insert-demo-data');
+                
+                if (result.success) {
+                    console.log('Demo data inserted successfully');
+                    // Show success notification
+                    showNotification('Demo data inserted successfully!', 'success');
+                    
+                    // Reload the data on all tabs
+                    loadDashboardCounts();
+                    loadVehicles();
+                    loadPeople();
+                    loadRounds();
+                    loadAlerts();
+                } else {
+                    console.error('Error inserting demo data:', result.error);
+                    showNotification('Error inserting demo data', 'error');
+                }
+            } catch (error) {
+                console.error('Error inserting demo data:', error);
+                showNotification('Error inserting demo data', 'error');
+            } finally {
+                insertDemoDataBtn.disabled = false;
+                insertDemoDataBtn.textContent = 'Insert Demo Data';
+                
+                // Remove loading animation
+                document.querySelectorAll('.dashboard-card').forEach(card => {
+                    card.classList.remove('loading');
+                });
+            }
+        });
+    }
+    
+    // Initialize import functionality ONLY ONCE
+    if (!importInitialized) {
+        initializeImport();
+        importInitialized = true;
+    }
 });
 
+// Add splash effect to dashboard
+function addSplashEffect() {
+    const container = document.querySelector('.container');
+    if (container) {
+        container.classList.add('fade-in');
+        
+        // Add staggered animations to dashboard cards
+        const cards = document.querySelectorAll('.dashboard-card');
+        cards.forEach((card, index) => {
+            card.style.animationDelay = `${0.1 + (index * 0.1)}s`;
+        });
+    }
+}
+
+// Show notification
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    
+    // Add to document
+    document.body.appendChild(notification);
+    
+    // Trigger animation
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 10);
+    
+    // Remove after delay
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    }, 3000);
+}
+
 // Tab functionality
-function initTabSystem() {
+function initializeTabs() {
     const tabButtons = document.querySelectorAll('.tab-btn');
     const tabPanes = document.querySelectorAll('.tab-pane');
-    
-    console.log('Initializing tabs:', tabButtons.length, 'buttons and', tabPanes.length, 'panes');
     
     tabButtons.forEach(button => {
         button.addEventListener('click', () => {
@@ -63,1792 +129,466 @@ function initTabSystem() {
                 pane.classList.remove('active');
                 if (pane.id === tabId) {
                     pane.classList.add('active');
-                    console.log('Activated tab pane:', tabId);
+                    
+                    // Load data based on which tab is active
+                    if (tabId === 'vehicles-tab') {
+                        loadVehicles();
+                    } else if (tabId === 'people-tab') {
+                        loadPeople();
+                    } else if (tabId === 'rounds-tab') {
+                        loadRounds();
+                    } else if (tabId === 'alerts-tab') {
+                        loadAlerts();
+                    }
                 }
             });
-            
-            // No special handling for import tab - we'll let direct-import.js handle that
         });
     });
 }
 
-// Demo function to show dashboard counts without requiring IPC
-function loadDashboardCountsDemo() {
-    console.log('Loading dashboard counts (demo)');
+// Load vehicles data
+async function loadVehicles() {
+    console.log('Loading vehicles data');
+    const vehiclesContainer = document.querySelector('#vehicles-tab .data-container');
     
-    // Set demo counts
-    const peopleCount = document.getElementById('people-count');
-    if (peopleCount) {
-        peopleCount.textContent = '12';
-    }
-    
-    const vehiclesCount = document.getElementById('vehicles-count');
-    if (vehiclesCount) {
-        vehiclesCount.textContent = '8';
-    }
-    
-    const roundsCount = document.getElementById('rounds-count');
-    if (roundsCount) {
-        roundsCount.textContent = '4';
-    }
-    
-    const alertsCount = document.getElementById('alerts-count');
-    if (alertsCount) {
-        alertsCount.textContent = '3';
-    }
-    
-    console.log('Dashboard counts updated (demo)');
-}
-
-// Load data from database
-async function loadData() {
-    try {
-        // Load drivers
-        drivers = await getDrivers();
-        renderDrivers(drivers);
-        
-        // Load vehicles
-        vehicles = await getVehicles();
-        renderVehicles(vehicles);
-        
-        // Load alerts
-        alerts = await getAlerts();
-        renderAlerts(alerts);
-        
-        // Generate alerts for expired or soon-to-expire licenses
-        await checkLicenseExpirations();
-    } catch (error) {
-        console.error('Error loading data:', error);
-    }
-}
-
-// Import Excel file data
-async function importExcelFile(filePath) {
-    try {
-        const workbook = XLSX.readFile(filePath);
-        
-        // Process drivers sheet
-        if (workbook.SheetNames.includes('Drivers')) {
-            const driversSheet = workbook.Sheets['Drivers'];
-            const driversJson = XLSX.utils.sheet_to_json(driversSheet);
-            
-            for (const row of driversJson) {
-                // Process each driver row
-                if (row.Name && row.LicenseNumber && row.LicenseExpiration) {
-                    // Convert date format if needed
-                    const expirationDate = moment(row.LicenseExpiration).format('YYYY-MM-DD');
-                    const status = determineDriverStatus(expirationDate);
-                    
-                    // Add driver to database using IPC
-                    await ipcRenderer.invoke('add-driver', {
-                        name: row.Name,
-                        licenseNumber: row.LicenseNumber,
-                        licenseExpiration: expirationDate,
-                        status
-                    });
-                }
-            }
-        }
-        
-        // Load the updated drivers to get their IDs
-        drivers = await ipcRenderer.invoke('get-drivers');
-        
-        // Process vehicles sheet
-        if (workbook.SheetNames.includes('Vehicles')) {
-            const vehiclesSheet = workbook.Sheets['Vehicles'];
-            const vehiclesJson = XLSX.utils.sheet_to_json(vehiclesSheet);
-            
-            for (const row of vehiclesJson) {
-                // Process each vehicle row
-                if (row.Make && row.Model && row.LicensePlate) {
-                    // Convert date format if needed
-                    const inspectionDate = row.LastInspection ? moment(row.LastInspection).format('YYYY-MM-DD') : null;
-                    const status = determineVehicleStatus(inspectionDate);
-                    
-                    // Find driver ID if provided
-                    let driverId = null;
-                    if (row.DriverLicense) {
-                        const driver = drivers.find(d => d.licenseNumber === row.DriverLicense);
-                        if (driver) {
-                            driverId = driver.id;
-                        }
-                    }
-                    
-                    // Add vehicle to database using IPC
-                    await ipcRenderer.invoke('add-vehicle', {
-                        make: row.Make,
-                        model: row.Model,
-                        licensePlate: row.LicensePlate,
-                        lastInspection: inspectionDate,
-                        status,
-                        driverId
-                    });
-                }
-            }
-        }
-        
-        return true;
-    } catch (error) {
-        console.error('Error importing Excel file:', error);
-        throw error;
-    }
-}
-
-// Determine driver status based on license expiration
-function determineDriverStatus(expirationDate) {
-    const now = moment();
-    const expiration = moment(expirationDate);
-    const monthsRemaining = expiration.diff(now, 'months');
-    
-    if (expiration < now) {
-        return 'Expired';
-    } else if (monthsRemaining <= 3) {
-        return 'Expiring Soon';
-    } else {
-        return 'Valid';
-    }
-}
-
-// Determine vehicle status based on last inspection
-function determineVehicleStatus(inspectionDate) {
-    if (!inspectionDate) {
-        return 'Unknown';
-    }
-    
-    const now = moment();
-    const inspection = moment(inspectionDate);
-    const monthsAgo = now.diff(inspection, 'months');
-    
-    if (monthsAgo >= 12) {
-        return 'Inspection Overdue';
-    } else if (monthsAgo >= 10) {
-        return 'Inspection Due Soon';
-    } else {
-        return 'Valid';
-    }
-}
-
-// Check for license expirations and create alerts
-async function checkLicenseExpirations() {
-    const now = moment();
-    
-    for (const driver of drivers) {
-        const expiration = moment(driver.licenseExpiration);
-        const monthsRemaining = expiration.diff(now, 'months');
-        
-        if (expiration < now) {
-            await ipcRenderer.invoke('add-alert', {
-                type: 'danger',
-                message: `Driver ${driver.name}'s license (${driver.licenseNumber}) has expired on ${expiration.format('MM/DD/YYYY')}.`,
-                relatedId: driver.id,
-                relatedType: 'driver',
-                status: 'active'
-            });
-        } else if (monthsRemaining <= 3) {
-            await ipcRenderer.invoke('add-alert', {
-                type: 'warning',
-                message: `Driver ${driver.name}'s license (${driver.licenseNumber}) will expire on ${expiration.format('MM/DD/YYYY')}.`,
-                relatedId: driver.id,
-                relatedType: 'driver',
-                status: 'active'
-            });
-        }
-    }
-    
-    for (const vehicle of vehicles) {
-        if (vehicle.lastInspection) {
-            const inspection = moment(vehicle.lastInspection);
-            const monthsAgo = now.diff(inspection, 'months');
-            
-            if (monthsAgo >= 12) {
-                await ipcRenderer.invoke('add-alert', {
-                    type: 'danger',
-                    message: `Vehicle ${vehicle.make} ${vehicle.model} (${vehicle.licensePlate}) inspection is overdue. Last inspection: ${inspection.format('MM/DD/YYYY')}.`,
-                    relatedId: vehicle.id,
-                    relatedType: 'vehicle',
-                    status: 'active'
-                });
-            } else if (monthsAgo >= 10) {
-                await ipcRenderer.invoke('add-alert', {
-                    type: 'warning',
-                    message: `Vehicle ${vehicle.make} ${vehicle.model} (${vehicle.licensePlate}) is due for inspection soon. Last inspection: ${inspection.format('MM/DD/YYYY')}.`,
-                    relatedId: vehicle.id,
-                    relatedType: 'vehicle',
-                    status: 'active'
-                });
-            }
-        }
-    }
-    
-    // Reload alerts after creating new ones
-    alerts = await ipcRenderer.invoke('get-alerts');
-}
-
-// Render drivers in the table
-function renderDrivers(driversData) {
-    driversTableBody.innerHTML = '';
-    
-    if (driversData.length === 0) {
-        const emptyRow = document.createElement('tr');
-        emptyRow.innerHTML = '<td colspan="6" class="text-center">No drivers found. Import data to get started.</td>';
-        driversTableBody.appendChild(emptyRow);
+    if (!vehiclesContainer) {
+        console.error('Vehicles container not found');
         return;
     }
     
-    driversData.forEach(driver => {
-        const expirationDate = moment(driver.licenseExpiration);
-        const now = moment();
-        const isExpired = expirationDate < now;
-        const isExpiringSoon = expirationDate.diff(now, 'months') <= 3;
-        
-        let statusClass = 'status-good';
-        if (isExpired) {
-            statusClass = 'status-expired';
-        } else if (isExpiringSoon) {
-            statusClass = 'status-warning';
-        }
-        
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${driver.id}</td>
-            <td>${driver.name}</td>
-            <td>${driver.licenseNumber}</td>
-            <td>${moment(driver.licenseExpiration).format('MM/DD/YYYY')}</td>
-            <td class="${statusClass}">${driver.status}</td>
-            <td>
-                <button class="action-btn edit" data-id="${driver.id}">Edit</button>
-                <button class="action-btn delete" data-id="${driver.id}">Delete</button>
-            </td>
-        `;
-        
-        // Add event listeners for action buttons
-        const editBtn = tr.querySelector('.edit');
-        const deleteBtn = tr.querySelector('.delete');
-        
-        editBtn.addEventListener('click', () => {
-            // TODO: Implement edit driver functionality
-            console.log('Edit driver:', driver.id);
-        });
-        
-        deleteBtn.addEventListener('click', async () => {
-            if (confirm(`Are you sure you want to delete driver ${driver.name}?`)) {
-                try {
-                    await deleteDriver(driver.id);
-                    await loadData(); // Reload data after delete
-                } catch (error) {
-                    console.error('Error deleting driver:', error);
-                    alert(`Error deleting driver: ${error.message}`);
-                }
-            }
-        });
-        
-        driversTableBody.appendChild(tr);
-    });
-}
-
-// Render vehicles in the table
-function renderVehicles(vehiclesData) {
-    vehiclesTableBody.innerHTML = '';
-    
-    if (vehiclesData.length === 0) {
-        const emptyRow = document.createElement('tr');
-        emptyRow.innerHTML = '<td colspan="7" class="text-center">No vehicles found. Import data to get started.</td>';
-        vehiclesTableBody.appendChild(emptyRow);
-        return;
-    }
-    
-    vehiclesData.forEach(vehicle => {
-        let statusClass = 'status-good';
-        if (vehicle.status === 'Inspection Overdue') {
-            statusClass = 'status-expired';
-        } else if (vehicle.status === 'Inspection Due Soon') {
-            statusClass = 'status-warning';
-        }
-        
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${vehicle.id}</td>
-            <td>${vehicle.make}</td>
-            <td>${vehicle.model}</td>
-            <td>${vehicle.licensePlate}</td>
-            <td>${vehicle.lastInspection ? moment(vehicle.lastInspection).format('MM/DD/YYYY') : 'N/A'}</td>
-            <td class="${statusClass}">${vehicle.status}</td>
-            <td>
-                <button class="action-btn edit" data-id="${vehicle.id}">Edit</button>
-                <button class="action-btn delete" data-id="${vehicle.id}">Delete</button>
-            </td>
-        `;
-        
-        // Add event listeners for action buttons
-        const editBtn = tr.querySelector('.edit');
-        const deleteBtn = tr.querySelector('.delete');
-        
-        editBtn.addEventListener('click', () => {
-            // TODO: Implement edit vehicle functionality
-            console.log('Edit vehicle:', vehicle.id);
-        });
-        
-        deleteBtn.addEventListener('click', async () => {
-            if (confirm(`Are you sure you want to delete vehicle ${vehicle.make} ${vehicle.model}?`)) {
-                try {
-                    await deleteVehicle(vehicle.id);
-                    await loadData(); // Reload data after delete
-                } catch (error) {
-                    console.error('Error deleting vehicle:', error);
-                    alert(`Error deleting vehicle: ${error.message}`);
-                }
-            }
-        });
-        
-        vehiclesTableBody.appendChild(tr);
-    });
-}
-
-// Render alerts in the alerts container
-function renderAlerts(alertsData) {
-    alertsContainer.innerHTML = '';
-    
-    if (alertsData.length === 0) {
-        const emptyAlert = document.createElement('div');
-        emptyAlert.classList.add('alert-item', 'alert-info');
-        emptyAlert.textContent = 'No alerts at this time.';
-        alertsContainer.appendChild(emptyAlert);
-        return;
-    }
-    
-    alertsData.forEach(alert => {
-        const alertDiv = document.createElement('div');
-        alertDiv.classList.add('alert-item', `alert-${alert.type}`);
-        alertDiv.textContent = alert.message;
-        
-        // Add dismiss button
-        const dismissBtn = document.createElement('button');
-        dismissBtn.classList.add('dismiss-btn');
-        dismissBtn.textContent = 'Dismiss';
-        dismissBtn.addEventListener('click', async () => {
-            try {
-                await markAlertAsRead(alert.id);
-                alertDiv.remove();
-            } catch (error) {
-                console.error('Error dismissing alert:', error);
-            }
-        });
-        
-        alertDiv.appendChild(dismissBtn);
-        alertsContainer.appendChild(alertDiv);
-    });
-}
-
-// Filter drivers based on search input
-function filterDrivers(searchText) {
-    const filteredDrivers = drivers.filter(driver => {
-        return (
-            driver.name.toLowerCase().includes(searchText) ||
-            driver.licenseNumber.toLowerCase().includes(searchText) ||
-            driver.status.toLowerCase().includes(searchText)
-        );
-    });
-    
-    renderDrivers(filteredDrivers);
-}
-
-// Filter vehicles based on search input
-function filterVehicles(searchText) {
-    const filteredVehicles = vehicles.filter(vehicle => {
-        return (
-            vehicle.make.toLowerCase().includes(searchText) ||
-            vehicle.model.toLowerCase().includes(searchText) ||
-            vehicle.licensePlate.toLowerCase().includes(searchText) ||
-            (vehicle.status && vehicle.status.toLowerCase().includes(searchText))
-        );
-    });
-    
-    renderVehicles(filteredVehicles);
-}
-
-// Show import status message
-function showImportStatus(message, type) {
-    importStatus.textContent = message;
-    importStatus.className = '';
-    importStatus.classList.add(`status-${type}`);
-}
-
-// API communication functions
-async function getDrivers() {
     try {
-        return await ipcRenderer.invoke('get-drivers');
-    } catch (error) {
-        console.error('Error fetching drivers:', error);
-        // For demo purposes, return sample data if the database is not yet available
-        return [
-            { id: 1, name: 'John Doe', licenseNumber: 'DL123456', licenseExpiration: '2023-12-31', status: 'Valid' },
-            { id: 2, name: 'Jane Smith', licenseNumber: 'DL654321', licenseExpiration: '2022-10-15', status: 'Expired' },
-            { id: 3, name: 'Bob Johnson', licenseNumber: 'DL789012', licenseExpiration: '2023-06-30', status: 'Expiring Soon' }
-        ];
-    }
-}
-
-async function addDriver(driver) {
-    try {
-        return await ipcRenderer.invoke('add-driver', driver);
-    } catch (error) {
-        console.error('Error adding driver:', error);
-        // Fallback for demo
-        drivers.push({ id: drivers.length + 1, ...driver });
-        return { id: drivers.length, ...driver };
-    }
-}
-
-async function deleteDriver(id) {
-    try {
-        return await ipcRenderer.invoke('delete-driver', id);
-    } catch (error) {
-        console.error('Error deleting driver:', error);
-        // Fallback for demo
-        const index = drivers.findIndex(d => d.id === id);
-        if (index !== -1) {
-            drivers.splice(index, 1);
-        }
-        return { success: true };
-    }
-}
-
-async function getVehicles() {
-    try {
-        return await ipcRenderer.invoke('get-vehicles');
-    } catch (error) {
-        console.error('Error fetching vehicles:', error);
-        // For demo purposes, return sample data
-        return [
-            { id: 1, make: 'Toyota', model: 'Camry', licensePlate: 'ABC123', lastInspection: '2023-01-15', status: 'Valid', driverId: 1 },
-            { id: 2, make: 'Honda', model: 'Accord', licensePlate: 'XYZ789', lastInspection: '2022-05-20', status: 'Inspection Overdue', driverId: 2 },
-            { id: 3, make: 'Ford', model: 'F-150', licensePlate: 'DEF456', lastInspection: '2022-11-10', status: 'Inspection Due Soon', driverId: 3 }
-        ];
-    }
-}
-
-async function addVehicle(vehicle) {
-    try {
-        return await ipcRenderer.invoke('add-vehicle', vehicle);
-    } catch (error) {
-        console.error('Error adding vehicle:', error);
-        // Fallback for demo
-        vehicles.push({ id: vehicles.length + 1, ...vehicle });
-        return { id: vehicles.length, ...vehicle };
-    }
-}
-
-async function deleteVehicle(id) {
-    try {
-        return await ipcRenderer.invoke('delete-vehicle', id);
-    } catch (error) {
-        console.error('Error deleting vehicle:', error);
-        // Fallback for demo
-        const index = vehicles.findIndex(v => v.id === id);
-        if (index !== -1) {
-            vehicles.splice(index, 1);
-        }
-        return { success: true };
-    }
-}
-
-async function getAlerts() {
-    try {
-        return await ipcRenderer.invoke('get-alerts');
-    } catch (error) {
-        console.error('Error fetching alerts:', error);
-        // For demo purposes, return sample data
-        return [
-            { id: 1, type: 'warning', message: 'Driver Jane Smith\'s license (DL654321) has expired on 10/15/2022.', relatedId: 2, relatedType: 'driver', status: 'active' },
-            { id: 2, type: 'warning', message: 'Vehicle Honda Accord (XYZ789) inspection is overdue. Last inspection: 05/20/2022.', relatedId: 2, relatedType: 'vehicle', status: 'active' },
-            { id: 3, type: 'warning', message: 'Driver Bob Johnson\'s license (DL789012) will expire on 06/30/2023.', relatedId: 3, relatedType: 'driver', status: 'active' }
-        ];
-    }
-}
-
-async function createAlert(alert) {
-    try {
-        return await ipcRenderer.invoke('add-alert', alert);
-    } catch (error) {
-        console.error('Error creating alert:', error);
-        // Fallback for demo
-        const existingAlert = alerts.find(a => 
-            a.relatedId === alert.relatedId && 
-            a.relatedType === alert.relatedType && 
-            a.type === alert.type
-        );
-        
-        if (!existingAlert) {
-            alerts.push({ id: alerts.length + 1, ...alert });
-        }
-        
-        return { success: true };
-    }
-}
-
-async function markAlertAsRead(id) {
-    try {
-        return await ipcRenderer.invoke('mark-alert-read', id);
-    } catch (error) {
-        console.error('Error marking alert as read:', error);
-        // Fallback for demo
-        const index = alerts.findIndex(a => a.id === id);
-        if (index !== -1) {
-            alerts.splice(index, 1);
-        }
-        return { success: true };
-    }
-}
-
-// Initialize Excel Import functionality with a type selector
-function initializeImportTab() {
-    console.log('Initializing import tab with container:', document.getElementById('import-container'));
-    
-    // Check if the Import Manager is already initialized
-    if (!window.importManager) {
-        try {
-            // Define the import types based on schema names
-            const importTypes = [
-                { id: 'people', label: 'Driver Data' },
-                { id: 'vehicles', label: 'Vehicle Data' },
-                { id: 'rounds', label: 'Route Data' },
-                { id: 'addresses', label: 'Address Data' },
-                { id: 'vehicle_assignments', label: 'Vehicle Assignment Data' },
-                { id: 'time_records', label: 'Time Records' },
-                { id: 'stop_events_alert', label: 'Event Alerts' },
-                { id: 'alert_data', label: 'Alert Data (30min)' },
-                { id: 'sys_web', label: 'Worktime (SysWeb)' }
-            ];
-            
-            // Find import container element
-            const importContainer = document.getElementById('import-container');
-            if (importContainer) {
-                console.log('Found import container, initializing ImportManager');
-                
-                // Force a little delay to ensure DOM is ready
-                setTimeout(() => {
-                    try {
-                        // Initialize the ImportManager component
-                        window.importManager = new ImportManager('import-container', {
-                            importTypes: importTypes,
-                            onImportTypeSelected: async (data) => {
-                                console.log('Import type selected:', data.type, 'with file:', data.file.name);
-                                
-                                // Special handling for SysWeb and Alert data imports
-                                if (data.type === 'sys_web') {
-                                    importSysWebExcel(data.file.path);
-                                    return;
-                                }
-                                
-                                if (data.type === 'alert_data') {
-                                    importAlertExcel(data.file.path);
-                                    return;
-                                }
-                                
-                                // Get schema fields for the selected type
-                                const schemaFields = await ipcRenderer.invoke('get-schema-fields', data.type);
-                                console.log('Schema fields retrieved:', schemaFields);
-                                
-                                // Initialize mapping UI for the selected type
-                                initMappingUI(data.excelData, data.type, schemaFields);
-                            }
-                        });
-                        
-                        console.log('Import Manager initialized successfully');
-                    } catch (error) {
-                        console.error('Error in delayed ImportManager initialization:', error);
-                    }
-                }, 100);
-            } else {
-                console.error('Import container element not found');
-            }
-        } catch (error) {
-            console.error('Error initializing Import Manager:', error);
-        }
-    } else {
-        console.log('Import Manager already initialized');
-    }
-}
-
-// Initialize Mapping UI with Excel data and schema type
-function initMappingUI(excelData, schemaType, schemaFields) {
-    console.log('Initializing mapping UI for', schemaType);
-    try {
-        // Initialize Mapping UI
-        const mappingElement = document.getElementById('mapping-container');
-        if (mappingElement) {
-            console.log('Found mapping container');
-            if (!window.mappingUI) {
-                window.mappingUI = new MappingUI('mapping-container', {
-                    onSave: async (mappingData) => {
-                        console.log('Mapping saved:', mappingData);
-                        // Process the mapped data
-                        await processImport(mappingData, schemaType);
-                    },
-                    onCancel: () => {
-                        console.log('Mapping cancelled');
-                        // Reset the UI
-                        if (window.mappingUI) {
-                            window.mappingUI.reset();
-                        }
-                        // Hide mapping UI and show import manager again
-                        if (mappingElement) {
-                            mappingElement.style.display = 'none';
-                        }
-                        const importContainer = document.getElementById('import-container');
-                        if (importContainer) {
-                            importContainer.style.display = 'block';
-                        }
-                    }
-                });
-                
-                console.log('Mapping UI initialized');
-            } else {
-                // Reset the mapping UI for new data
-                window.mappingUI.reset();
-                console.log('Existing mapping UI reset');
-            }
-            
-            // Set Excel data and schema fields to the Mapping UI
-            window.mappingUI.setExcelData(excelData);
-            window.mappingUI.setSchemaFields(schemaFields);
-            console.log('Set Excel data and schema fields to mapping UI');
-            
-            // Show mapping UI and hide import manager
-            mappingElement.style.display = 'block';
-            const importContainer = document.getElementById('import-container');
-            if (importContainer) {
-                importContainer.style.display = 'none';
-            }
-        } else {
-            console.error('Mapping container element not found');
-        }
-    } catch (error) {
-        console.error('Error initializing Mapping UI:', error);
-    }
-}
-
-// Process the import based on mapping data and schema type
-async function processImport(mappingData, schemaType) {
-    console.log('Processing import for', schemaType);
-    const importResults = document.getElementById('import-results');
-    if (!importResults) {
-        console.error('Import results element not found');
-        return;
-    }
-    
-    importResults.innerHTML = '<div class="status-message loading">Importing data...</div>';
-    importResults.style.display = 'block';
-    
-    try {
-        // Get database context (for lookup operations)
-        const people = await ipcRenderer.invoke('get-people');
         const vehicles = await ipcRenderer.invoke('get-vehicles');
-        const context = { people, vehicles };
         
-        // Map the data using the data mapper
-        const result = await ipcRenderer.invoke('map-data', 
-            mappingData.excelData, 
-            mappingData.mappings, 
-            schemaType,
-            context
-        );
-        
-        console.log('Mapped data:', result);
-        
-        if (result.errors && result.errors.length > 0) {
-            // Show errors
-            importResults.innerHTML = `
-                <div class="status-message error">
-                    <h3>Import Errors</h3>
-                    <ul>
-                        ${result.errors.map(error => `<li>Row ${error.row}: ${error.error}</li>`).join('')}
-                    </ul>
-                </div>
-            `;
+        if (!vehicles || vehicles.length === 0) {
+            vehiclesContainer.innerHTML = '<div class="no-data-message">No vehicles found</div>';
             return;
         }
         
-        // Import the data to the database
-        let importedCount = 0;
-        const importedIds = [];
+        // Display vehicles
+        let html = '<div class="data-grid">';
+        vehicles.forEach(vehicle => {
+            html += `
+                <div class="data-card">
+                    <h3>${vehicle.plate_number || 'Unknown'}</h3>
+                    <p>Type: ${vehicle.vehicle_type || 'Not specified'}</p>
+                    <p>Status: ${vehicle.status || 'Unknown'}</p>
+                </div>
+            `;
+        });
+        html += '</div>';
         
-        for (const item of result.data) {
-            try {
-                let response;
-                
-                switch (schemaType) {
-                    case 'people':
-                        response = await ipcRenderer.invoke('add-person', item);
-                        break;
-                    case 'vehicles':
-                        response = await ipcRenderer.invoke('add-vehicle', item);
-                        break;
-                    case 'addresses':
-                        response = await ipcRenderer.invoke('add-address', item);
-                        break;
-                    case 'rounds':
-                        response = await ipcRenderer.invoke('add-round', item);
-                        break;
-                    case 'vehicle_assignments':
-                        response = await ipcRenderer.invoke('add-vehicle-assignment', item);
-                        break;
-                    case 'time_records':
-                        response = await ipcRenderer.invoke('add-time-record', item);
-                        break;
-                    case 'stop_events_alert':
-                        response = await ipcRenderer.invoke('add-stop-event-alert', item);
-                        break;
-                }
-                
-                if (response && response.id) {
-                    importedIds.push(response.id);
-                    importedCount++;
-                }
-            } catch (error) {
-                console.error('Error importing item:', error);
-            }
-        }
-        
-        // Show success message
-        importResults.innerHTML = `
-            <div class="status-message success">
-                <h3>Import Successful</h3>
-                <p>Successfully imported ${importedCount} ${schemaType} records.</p>
-                <button id="back-to-import-btn" class="secondary">Import More Data</button>
-            </div>
-        `;
-        
-        // Add event listener for the back button
-        const backButton = document.getElementById('back-to-import-btn');
-        if (backButton) {
-            backButton.addEventListener('click', () => {
-                // Hide results and mapping UI, show import manager
-                importResults.style.display = 'none';
-                const mappingElement = document.getElementById('mapping-container');
-                if (mappingElement) {
-                    mappingElement.style.display = 'none';
-                }
-                const importContainer = document.getElementById('import-container');
-                if (importContainer) {
-                    importContainer.style.display = 'block';
-                }
-                
-                // Reset the import manager
-                if (window.importManager) {
-                    window.importManager.reset();
-                }
-            });
-        }
-        
-        // Refresh dashboard counts
-        loadDashboardCounts();
-        
+        vehiclesContainer.innerHTML = html;
     } catch (error) {
-        console.error('Error processing import:', error);
-        importResults.innerHTML = `
-            <div class="status-message error">
-                <h3>Import Failed</h3>
-                <p>Error: ${error.message}</p>
-                <button id="back-to-import-btn" class="secondary">Try Again</button>
-            </div>
-        `;
-        
-        // Add event listener for the back button
-        const backButton = document.getElementById('back-to-import-btn');
-        if (backButton) {
-            backButton.addEventListener('click', () => {
-                // Hide results, show import manager
-                importResults.style.display = 'none';
-                const mappingElement = document.getElementById('mapping-container');
-                if (mappingElement) {
-                    mappingElement.style.display = 'none';
-                }
-                const importContainer = document.getElementById('import-container');
-                if (importContainer) {
-                    importContainer.style.display = 'block';
-                }
-            });
-        }
+        console.error('Error loading vehicles:', error);
+        vehiclesContainer.innerHTML = `<div class="error-message">Error loading vehicles: ${error.message}</div>`;
     }
-}
-
-// Initialize UI on content loaded
-document.addEventListener('DOMContentLoaded', () => {
-  initializeTabs();
-  loadDashboardCounts();
-  initializeImportFunctionality();
-  
-  // Listen for refresh button clicks
-  document.querySelectorAll('.refresh-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tabId = btn.closest('.tab-content').id;
-      if (tabId === 'dashboard') {
-        loadDashboardCounts();
-      } else if (tabId === 'vehicles') {
-        loadVehicles();
-      } else if (tabId === 'people') {
-        loadPeople();
-      } else if (tabId === 'rounds') {
-        loadRounds();
-      } else if (tabId === 'alerts') {
-        loadAlerts();
-      }
-    });
-  });
-});
-
-// Tabs initialization
-function initializeTabs() {
-  const tabButtons = document.querySelectorAll('.tab-button');
-  const tabContents = document.querySelectorAll('.tab-content');
-  
-  if (!tabButtons.length || !tabContents.length) {
-    console.error('Tab buttons or tab contents not found');
-    return;
-  }
-  
-  console.log(`Initializing ${tabButtons.length} tabs`);
-  
-  tabButtons.forEach(button => {
-    button.addEventListener('click', () => {
-      // Remove active class from all buttons and content
-      tabButtons.forEach(btn => btn.classList.remove('active'));
-      tabContents.forEach(content => content.classList.remove('active'));
-      
-      // Add active class to clicked button
-      button.classList.add('active');
-      
-      // Show corresponding content
-      const tabId = button.dataset.tab;
-      const tabContent = document.getElementById(tabId);
-      
-      if (tabContent) {
-        tabContent.classList.add('active');
-        
-        // Handle tab specific loading
-        if (tabId === 'vehicles') {
-          loadVehicles();
-        } else if (tabId === 'people') {
-          loadPeople();
-        } else if (tabId === 'rounds') {
-          loadRounds();
-        } else if (tabId === 'alerts') {
-          loadAlerts();
-        }
-      }
-    });
-  });
-  
-  // Set Dashboard as active by default
-  const defaultTab = document.querySelector('[data-tab="dashboard"]');
-  if (defaultTab) {
-    defaultTab.click();
-  }
-}
-
-// Load dashboard counts
-async function loadDashboardCounts() {
-  try {
-    console.log('Loading dashboard counts');
-    
-    const peopleCount = await window.electronAPI.countData('people');
-    const vehiclesCount = await window.electronAPI.countData('vehicles');
-    const roundsCount = await window.electronAPI.countData('rounds');
-    const alertsCount = await window.electronAPI.countData('alerts');
-    
-    const peopleCountElement = document.getElementById('people-count');
-    const vehiclesCountElement = document.getElementById('vehicles-count');
-    const roundsCountElement = document.getElementById('rounds-count');
-    const alertsCountElement = document.getElementById('alerts-count');
-    
-    if (peopleCountElement) peopleCountElement.textContent = peopleCount;
-    if (vehiclesCountElement) vehiclesCountElement.textContent = vehiclesCount;
-    if (roundsCountElement) roundsCountElement.textContent = roundsCount;
-    if (alertsCountElement) alertsCountElement.textContent = alertsCount;
-    
-    console.log('Dashboard counts updated:', { peopleCount, vehiclesCount, roundsCount, alertsCount });
-  } catch (error) {
-    console.error('Error loading counts:', error);
-    showNotification('Error loading counts: ' + (error.message || 'Unknown error'), 'error');
-  }
-}
-
-// Import functionality
-function initializeImportFunctionality() {
-  const importFileInput = document.getElementById('import-file');
-  const importButton = document.getElementById('select-file-btn');
-  const processButton = document.getElementById('process-imported-data');
-  const clearButton = document.getElementById('clear-import');
-  
-  if (importButton) {
-    importButton.addEventListener('click', () => {
-      importFileInput.click();
-    });
-  }
-  
-  if (importFileInput) {
-    importFileInput.addEventListener('change', async (event) => {
-      if (event.target.files.length > 0) {
-        const filePath = event.target.files[0].path;
-        document.getElementById('selected-file-name').textContent = event.target.files[0].name;
-        
-        try {
-          // Show loading indicator
-          const loadingElement = document.getElementById('import-loading');
-          if (loadingElement) loadingElement.style.display = 'flex';
-          
-          console.log('Importing file:', filePath);
-          // Use the correct API method
-          const result = await window.electronAPI.importExcelFile(filePath);
-          
-          // Hide loading indicator
-          if (loadingElement) loadingElement.style.display = 'none';
-          
-          if (result.success) {
-            showNotification(`Successfully processed Excel file: ${result.importResult.success} records imported, ${result.importResult.errors} errors`, 'success');
-            
-            // Show preview with detected file type
-            const fileTypeDisplay = document.getElementById('file-type-display');
-            if (fileTypeDisplay) {
-              fileTypeDisplay.textContent = `Detected file type: ${result.fileType}`;
-              fileTypeDisplay.style.display = 'block';
-            }
-            
-            // Initialize preview with first 10 rows
-            initializeExcelPreview(result.preview, result.fileType);
-            
-            // Enable process button
-            if (processButton) processButton.disabled = false;
-          } else {
-            showNotification('Error importing file: ' + result.error, 'error');
-          }
-        } catch (error) {
-          console.error('Error during import:', error);
-          if (document.getElementById('import-loading')) {
-            document.getElementById('import-loading').style.display = 'none';
-          }
-          showNotification('Error importing file: ' + (error.message || 'Unknown error'), 'error');
-        }
-      }
-    });
-  }
-  
-  if (processButton) {
-    processButton.addEventListener('click', async () => {
-      try {
-        // Show loading indicator
-        const loadingElement = document.getElementById('import-loading');
-        if (loadingElement) loadingElement.style.display = 'flex';
-        
-        // Process the imported data
-        const result = await window.electronAPI.processImportedData();
-        
-        // Hide loading indicator
-        if (loadingElement) loadingElement.style.display = 'none';
-        
-        if (result.success) {
-          const stats = result.stats;
-          let message = 'Processing complete:<br>';
-          message += `Vehicles: ${stats.vehicles.created} created, ${stats.vehicles.updated} updated<br>`;
-          message += `People: ${stats.timeRecords.created} created, ${stats.timeRecords.updated} updated<br>`;
-          message += `Alerts: ${stats.alerts.created} created<br>`;
-          
-          showNotification(message, 'success', 8000);
-          
-          // Reload dashboard counts to reflect new data
-          loadDashboardCounts();
-        } else {
-          showNotification('Error processing data: ' + result.error, 'error');
-        }
-      } catch (error) {
-        console.error('Error during processing:', error);
-        if (document.getElementById('import-loading')) {
-          document.getElementById('import-loading').style.display = 'none';
-        }
-        showNotification('Error processing data: ' + (error.message || 'Unknown error'), 'error');
-      }
-    });
-  }
-  
-  if (clearButton) {
-    clearButton.addEventListener('click', () => {
-      // Clear the file input
-      importFileInput.value = '';
-      document.getElementById('selected-file-name').textContent = 'No file selected';
-      document.getElementById('excel-preview-container').innerHTML = '<p>No preview data available. Please select a file.</p>';
-      document.getElementById('file-type-display').style.display = 'none';
-      if (processButton) processButton.disabled = true;
-    });
-  }
-  
-  // Initialize tabs
-  initializeTabs();
-  loadDashboardCounts();
-}
-
-// Initialize Excel preview table
-function initializeExcelPreview(data, fileType) {
-  const previewContainer = document.getElementById('excel-preview-container');
-  
-  if (!previewContainer) {
-    console.error('Excel preview container not found');
-    return;
-  }
-  
-  // Clear previous preview
-  previewContainer.innerHTML = '';
-  
-  if (!data || data.length === 0) {
-    previewContainer.innerHTML = '<p>No preview data available. Please select a file.</p>';
-    return;
-  }
-  
-  // Create table
-  const table = document.createElement('table');
-  table.className = 'preview-table';
-  
-  // Create header row
-  const header = document.createElement('tr');
-  
-  // Get all possible keys from all data rows (in case of inconsistent structure)
-  const allKeys = new Set();
-  data.forEach(row => {
-    Object.keys(row).forEach(key => allKeys.add(key));
-  });
-  
-  // Create header cells
-  allKeys.forEach(key => {
-    const th = document.createElement('th');
-    th.textContent = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    header.appendChild(th);
-  });
-  
-  table.appendChild(header);
-  
-  // Create data rows
-  data.forEach(row => {
-    const tr = document.createElement('tr');
-    
-    allKeys.forEach(key => {
-      const td = document.createElement('td');
-      td.textContent = row[key] !== undefined ? row[key] : '';
-      tr.appendChild(td);
-    });
-    
-    table.appendChild(tr);
-  });
-  
-  previewContainer.appendChild(table);
-  
-  console.log(`Initialized Excel preview for ${fileType} with ${data.length} rows`);
-}
-
-// Load vehicles with their associated data
-async function loadVehicles() {
-  try {
-    console.log('Loading vehicles data');
-    
-    const vehiclesContainer = document.getElementById('vehicles-container');
-    if (!vehiclesContainer) {
-      console.error('Vehicles container not found');
-      return;
-    }
-    
-    vehiclesContainer.innerHTML = '<div class="loading">Loading vehicles...</div>';
-    
-    const vehicles = await window.electronAPI.getData('vehicles');
-    
-    if (!vehicles || vehicles.length === 0) {
-      vehiclesContainer.innerHTML = '<p>No vehicles found. Import data to add vehicles.</p>';
-      return;
-    }
-    
-    vehiclesContainer.innerHTML = '';
-    console.log(`Loaded ${vehicles.length} vehicles`);
-    
-    // Create vehicle cards
-    for (const vehicle of vehicles) {
-      const card = document.createElement('div');
-      card.className = 'data-card vehicle-card';
-      
-      try {
-        // Get vehicle rounds
-        const vehicleRoundsResult = await window.electronAPI.getVehicleRounds(vehicle.plate_number);
-        const vehicleRounds = vehicleRoundsResult.success ? vehicleRoundsResult.data : [];
-        
-        card.innerHTML = `
-          <h3>${vehicle.plate_number}</h3>
-          <div class="card-content">
-            <p><strong>Type:</strong> ${vehicle.vehicle_type || 'N/A'}</p>
-            <p><strong>Status:</strong> ${vehicle.status || 'N/A'}</p>
-            <p><strong>Updated:</strong> ${formatDate(vehicle.updated_at)}</p>
-            <div class="rounds-section">
-              <h4>Associated Rounds (${vehicleRounds.length})</h4>
-              <div class="rounds-list">
-                ${vehicleRounds.length > 0 
-                  ? vehicleRounds.map(round => `
-                      <div class="round-item">
-                        <div>Round: ${round.round_name || 'Unnamed'}</div>
-                        <div>Driver: ${round.driver_name || 'Unassigned'}</div>
-                        <div>Date: ${formatDate(round.round_date)}</div>
-                      </div>
-                    `).join('')
-                  : '<p>No rounds associated with this vehicle</p>'
-                }
-              </div>
-            </div>
-          </div>
-        `;
-        
-        vehiclesContainer.appendChild(card);
-      } catch (error) {
-        console.error(`Error loading rounds for vehicle ${vehicle.plate_number}:`, error);
-        // Still add the card but with error message for rounds
-        card.innerHTML = `
-          <h3>${vehicle.plate_number}</h3>
-          <div class="card-content">
-            <p><strong>Type:</strong> ${vehicle.vehicle_type || 'N/A'}</p>
-            <p><strong>Status:</strong> ${vehicle.status || 'N/A'}</p>
-            <p><strong>Updated:</strong> ${formatDate(vehicle.updated_at)}</p>
-            <div class="rounds-section">
-              <h4>Associated Rounds</h4>
-              <div class="error-message">Error loading rounds: ${error.message || 'Unknown error'}</div>
-            </div>
-          </div>
-        `;
-        vehiclesContainer.appendChild(card);
-      }
-    }
-  } catch (error) {
-    console.error('Error loading vehicles:', error);
-    const vehiclesContainer = document.getElementById('vehicles-container');
-    if (vehiclesContainer) {
-      vehiclesContainer.innerHTML = 
-        `<div class="error-message">Error loading vehicles: ${error.message || 'Unknown error'}</div>`;
-    }
-  }
-}
-
-// Load alerts with associated vehicle info
-async function loadAlerts() {
-  try {
-    console.log('Loading alerts data');
-    
-    const alertsContainer = document.getElementById('alerts-container');
-    if (!alertsContainer) {
-      console.error('Alerts container not found');
-      return;
-    }
-    
-    alertsContainer.innerHTML = '<div class="loading">Loading alerts...</div>';
-    
-    const alerts = await window.electronAPI.getData('alerts');
-    
-    if (!alerts || alerts.length === 0) {
-      alertsContainer.innerHTML = '<p>No alerts found.</p>';
-      return;
-    }
-    
-    alertsContainer.innerHTML = '';
-    console.log(`Loaded ${alerts.length} alerts`);
-    
-    // Create alert cards
-    for (const alert of alerts) {
-      const card = document.createElement('div');
-      card.className = `data-card alert-card ${alert.status || 'new'}`;
-      
-      // Get vehicle info
-      let vehicleInfo = 'Unknown vehicle';
-      if (alert.vehicle_id) {
-        try {
-          const vehiclesResult = await window.electronAPI.getById('vehicles', alert.vehicle_id);
-          if (vehiclesResult.success) {
-            vehicleInfo = vehiclesResult.data.plate_number;
-          }
-        } catch (error) {
-          console.error('Error getting vehicle info:', error);
-        }
-      }
-      
-      const alertType = alert.alert_type ? alert.alert_type.replace(/_/g, ' ').toUpperCase() : 'ALERT';
-      
-      card.innerHTML = `
-        <h3>${alertType}</h3>
-        <div class="card-content">
-          <p><strong>Vehicle:</strong> ${vehicleInfo}</p>
-          <p><strong>Location:</strong> ${alert.location || 'Unknown'}</p>
-          <p><strong>Time:</strong> ${formatDate(alert.timestamp)}</p>
-          <p><strong>Duration:</strong> ${alert.duration} minutes</p>
-          <p><strong>Status:</strong> ${alert.status || 'new'}</p>
-          <p><strong>Details:</strong> ${alert.details || ''}</p>
-        </div>
-        <div class="card-actions">
-          <button class="action-btn" data-action="resolve" data-id="${alert.id}">Resolve</button>
-          <button class="action-btn" data-action="ignore" data-id="${alert.id}">Ignore</button>
-        </div>
-      `;
-      
-      alertsContainer.appendChild(card);
-    }
-    
-    // Add event listeners for action buttons
-    document.querySelectorAll('.action-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        const action = e.target.dataset.action;
-        const id = e.target.dataset.id;
-        
-        try {
-          await window.electronAPI.updateAlertStatus(id, action === 'resolve' ? 'resolved' : 'ignored');
-          loadAlerts(); // Reload alerts
-          showNotification(`Alert ${action === 'resolve' ? 'resolved' : 'ignored'} successfully`, 'success');
-        } catch (error) {
-          console.error('Error updating alert:', error);
-          showNotification(`Error updating alert: ${error.message || 'Unknown error'}`, 'error');
-        }
-      });
-    });
-  } catch (error) {
-    console.error('Error loading alerts:', error);
-    const alertsContainer = document.getElementById('alerts-container');
-    if (alertsContainer) {
-      alertsContainer.innerHTML = 
-        `<div class="error-message">Error loading alerts: ${error.message || 'Unknown error'}</div>`;
-    }
-  }
 }
 
 // Load people data
 async function loadPeople() {
-  try {
     console.log('Loading people data');
+    const peopleContainer = document.querySelector('#people-tab .data-container');
     
-    const peopleContainer = document.getElementById('people-container');
     if (!peopleContainer) {
-      console.error('People container not found');
-      return;
+        console.error('People container not found');
+        return;
     }
     
-    peopleContainer.innerHTML = '<div class="loading">Loading people...</div>';
-    
-    const people = await window.electronAPI.getData('people');
-    
-    if (!people || people.length === 0) {
-      peopleContainer.innerHTML = '<p>No people found. Import data to add people.</p>';
-      return;
+    try {
+        const people = await ipcRenderer.invoke('get-people');
+        
+        if (!people || people.length === 0) {
+            peopleContainer.innerHTML = '<div class="no-data-message">No people found</div>';
+            return;
+        }
+        
+        // Display people
+        let html = '<div class="data-grid">';
+        people.forEach(person => {
+            html += `
+                <div class="data-card">
+                    <h3>${person.name || 'Unknown'}</h3>
+                    <p>Job Title: ${person.job_title || 'Not specified'}</p>
+                    <p>Cost Center: ${person.cost_center || 'Not specified'}</p>
+                    <p>Status: ${person.status || 'Unknown'}</p>
+                </div>
+            `;
+        });
+        html += '</div>';
+        
+        peopleContainer.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading people:', error);
+        peopleContainer.innerHTML = `<div class="error-message">Error loading people: ${error.message}</div>`;
     }
-    
-    peopleContainer.innerHTML = '';
-    console.log(`Loaded ${people.length} people`);
-    
-    // Create people cards
-    people.forEach(person => {
-      const card = document.createElement('div');
-      card.className = 'data-card';
-      
-      card.innerHTML = `
-        <h3>${person.name}</h3>
-        <div class="card-content">
-          <p><strong>Job Title:</strong> ${person.job_title || 'N/A'}</p>
-          <p><strong>Cost Center:</strong> ${person.cost_center || 'N/A'}</p>
-          <p><strong>Status:</strong> ${person.status || 'N/A'}</p>
-          <p><strong>Updated:</strong> ${formatDate(person.updated_at)}</p>
-        </div>
-      `;
-      
-      peopleContainer.appendChild(card);
-    });
-  } catch (error) {
-    console.error('Error loading people:', error);
-    const peopleContainer = document.getElementById('people-container');
-    if (peopleContainer) {
-      peopleContainer.innerHTML = 
-        `<div class="error-message">Error loading people: ${error.message || 'Unknown error'}</div>`;
-    }
-  }
 }
 
 // Load rounds data
 async function loadRounds() {
-  try {
     console.log('Loading rounds data');
+    const roundsContainer = document.querySelector('#rounds-tab .data-container');
     
-    const roundsContainer = document.getElementById('rounds-container');
     if (!roundsContainer) {
-      console.error('Rounds container not found');
-      return;
+        console.error('Rounds container not found');
+        return;
     }
     
-    roundsContainer.innerHTML = '<div class="loading">Loading rounds...</div>';
-    
-    const rounds = await window.electronAPI.getData('rounds');
-    
-    if (!rounds || rounds.length === 0) {
-      roundsContainer.innerHTML = '<p>No rounds found. Import data to add rounds.</p>';
-      return;
-    }
-    
-    roundsContainer.innerHTML = '';
-    console.log(`Loaded ${rounds.length} rounds`);
-    
-    // Create round cards
-    for (const round of rounds) {
-      const card = document.createElement('div');
-      card.className = 'data-card';
-      
-      // Get driver info if available
-      let driverInfo = 'Unassigned';
-      if (round.driver_id) {
-        try {
-          const driverResult = await window.electronAPI.getById('people', round.driver_id);
-          if (driverResult.success) {
-            driverInfo = driverResult.data.name;
-          }
-        } catch (error) {
-          console.error('Error getting driver info:', error);
+    try {
+        const rounds = await ipcRenderer.invoke('get-rounds');
+        
+        if (!rounds || rounds.length === 0) {
+            roundsContainer.innerHTML = '<div class="no-data-message">No rounds found</div>';
+            return;
         }
-      }
-      
-      // Get vehicle info if available
-      let vehicleInfo = 'No vehicle';
-      if (round.vehicle_id) {
-        try {
-          const vehicleResult = await window.electronAPI.getById('vehicles', round.vehicle_id);
-          if (vehicleResult.success) {
-            vehicleInfo = vehicleResult.data.plate_number;
-          }
-        } catch (error) {
-          console.error('Error getting vehicle info:', error);
-        }
-      }
-      
-      card.innerHTML = `
-        <h3>${round.name || 'Unnamed Round'}</h3>
-        <div class="card-content">
-          <p><strong>Date:</strong> ${formatDate(round.date)}</p>
-          <p><strong>Driver:</strong> ${driverInfo}</p>
-          <p><strong>Vehicle:</strong> ${vehicleInfo}</p>
-          <p><strong>Status:</strong> ${round.status || 'planned'}</p>
-          <p><strong>Start:</strong> ${round.start_time ? formatDate(round.start_time) : 'Not started'}</p>
-          <p><strong>End:</strong> ${round.end_time ? formatDate(round.end_time) : 'Not completed'}</p>
-        </div>
-      `;
-      
-      roundsContainer.appendChild(card);
-    }
-  } catch (error) {
-    console.error('Error loading rounds:', error);
-    const roundsContainer = document.getElementById('rounds-container');
-    if (roundsContainer) {
-      roundsContainer.innerHTML = 
-        `<div class="error-message">Error loading rounds: ${error.message || 'Unknown error'}</div>`;
-    }
-  }
-}
-
-// Helper function to format dates
-function formatDate(dateString) {
-  if (!dateString) return 'N/A';
-  
-  try {
-    // Try to parse the date
-    const date = new Date(dateString);
-    
-    // Check if date is valid
-    if (isNaN(date.getTime())) {
-      return dateString; // Return the original string if parsing failed
-    }
-    
-    // Format the date
-    const options = { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    };
-    
-    return date.toLocaleDateString(undefined, options);
-  } catch (e) {
-    console.error('Error formatting date:', e);
-    return dateString;
-  }
-}
-
-// Helper function to show notifications
-function showNotification(message, type = 'info', duration = 5000) {
-  const notification = document.createElement('div');
-  notification.className = `notification ${type}`;
-  notification.innerHTML = message;
-  
-  document.body.appendChild(notification);
-  
-  // Show notification with animation
-  setTimeout(() => {
-    notification.classList.add('visible');
-  }, 10);
-  
-  // Hide and remove after duration
-  setTimeout(() => {
-    notification.classList.remove('visible');
-    setTimeout(() => {
-      notification.remove();
-    }, 300);
-  }, duration);
-}
-
-// Listen for navigation events from main process
-ipcRenderer.on('navigate-to-tab', (event, tabId) => {
-    console.log('Navigating to tab:', tabId);
-    
-    // Find tab button
-    const tabButton = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
-    
-    if (tabButton) {
-        // Simulate click on tab button
-        tabButton.click();
-    }
-});
-
-// Initialize logger functionality
-function initializeLogging() {
-    console.log('Initializing logging system');
-    
-    // Log application startup
-    logEvent('info', 'Application initialized in renderer process');
-    
-    // Log tab changes
-    tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            const tabId = button.getAttribute('data-tab');
-            logEvent('info', `Tab changed to ${tabId}`);
+        
+        // Display rounds
+        let html = '<div class="data-grid">';
+        rounds.forEach(round => {
+            html += `
+                <div class="data-card">
+                    <h3>${round.name || 'Round ' + round.id}</h3>
+                    <p>Date: ${round.date || 'Not specified'}</p>
+                    <p>Status: ${round.status || 'Unknown'}</p>
+                </div>
+            `;
         });
+        html += '</div>';
+        
+        roundsContainer.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading rounds:', error);
+        roundsContainer.innerHTML = `<div class="error-message">Error loading rounds: ${error.message}</div>`;
+    }
+}
+
+// Load alerts data
+async function loadAlerts() {
+    console.log('Loading alerts data');
+    const alertsContainer = document.querySelector('#alerts-tab .data-container');
+    
+    if (!alertsContainer) {
+        console.error('Alerts container not found');
+        return;
+    }
+    
+    try {
+        const alerts = await ipcRenderer.invoke('get-alerts');
+        
+        if (!alerts || alerts.length === 0) {
+            alertsContainer.innerHTML = '<div class="no-data-message">No alerts found</div>';
+            return;
+        }
+        
+        // Display alerts
+        let html = '<div class="data-grid">';
+        alerts.forEach(alert => {
+            html += `
+                <div class="data-card alert">
+                    <h3>${alert.alert_type || 'Unknown Alert'}</h3>
+                    <p>Location: ${alert.location || 'Unknown'}</p>
+                    <p>Time: ${alert.timestamp || 'Unknown'}</p>
+                    <p>Status: ${alert.status || 'Unknown'}</p>
+                </div>
+            `;
+        });
+        html += '</div>';
+        
+        alertsContainer.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading alerts:', error);
+        alertsContainer.innerHTML = `<div class="error-message">Error loading alerts: ${error.message}</div>`;
+    }
+}
+
+// Load dashboard counts
+async function loadDashboardCounts() {
+    console.log('Loading dashboard counts');
+    
+    try {
+        // Get people count
+        let peopleCount = 0;
+        try {
+            const people = await ipcRenderer.invoke('get-people');
+            peopleCount = people ? people.length : 0;
+        } catch (error) {
+            console.error('Error loading people count:', error);
+            peopleCount = 12; // Demo fallback
+        }
+        document.getElementById('people-count').textContent = peopleCount;
+        
+        // Get vehicles count
+        let vehiclesCount = 0;
+        try {
+            const vehicles = await ipcRenderer.invoke('get-vehicles');
+            vehiclesCount = vehicles ? vehicles.length : 0;
+        } catch (error) {
+            console.error('Error loading vehicles count:', error);
+            vehiclesCount = 8; // Demo fallback
+        }
+        document.getElementById('vehicles-count').textContent = vehiclesCount;
+        
+        // Get rounds count
+        let roundsCount = 0;
+        try {
+            const rounds = await ipcRenderer.invoke('get-rounds');
+            roundsCount = rounds ? rounds.length : 0;
+        } catch (error) {
+            console.error('Error loading rounds count:', error);
+            roundsCount = 4; // Demo fallback
+        }
+        document.getElementById('rounds-count').textContent = roundsCount;
+        
+        // Get alert count
+        let alertsCount = 0;
+        try {
+            const alerts = await ipcRenderer.invoke('get-alerts');
+            alertsCount = alerts ? alerts.length : 0;
+        } catch (error) {
+            console.error('Error loading alerts count:', error);
+            alertsCount = 3; // Demo fallback
+        }
+        document.getElementById('alerts-count').textContent = alertsCount;
+        
+        console.log('Dashboard counts updated');
+    } catch (error) {
+        console.error('Error loading dashboard counts:', error);
+        // Fall back to demo mode
+        document.getElementById('people-count').textContent = '12';
+        document.getElementById('vehicles-count').textContent = '8';
+        document.getElementById('rounds-count').textContent = '4';
+        document.getElementById('alerts-count').textContent = '3';
+    }
+}
+
+// Initialize Excel Preview component when the Import tab is active - but don't add event listeners
+const importTabBtn = document.querySelector('.tab-btn[data-tab="import-tab"]');
+if (importTabBtn) {
+    importTabBtn.addEventListener('click', () => {
+        console.log('Import tab activated');
+        // Don't add any button event handlers here - they're now in initializeImport()
     });
-    
-    // Log import actions
-    if (selectFileBtn) {
-        selectFileBtn.addEventListener('click', () => {
-            logEvent('info', 'File selection initiated');
-        });
-    }
-    
-    if (importDataBtn) {
-        importDataBtn.addEventListener('click', () => {
-            logEvent('info', 'Data import initiated');
-        });
-    }
 }
 
-// Log an event to the main process logger
-function logEvent(level, message, data = null) {
-    // Log to console for immediate feedback
-    console[level](message, data || '');
+// Import functionality
+function initializeImport() {
+    console.log('Initializing import functionality');
     
-    // Send to main process for persistent logging
-    // This would be implemented by a real IPC channel in a full implementation
-    // For this demo, we're just logging to the console
-}
-
-// Initialize enhanced import functionality
-function initializeEnhancedImport() {
-    console.log('Initializing enhanced import functionality');
-    
-    const selectFileBtn = document.getElementById('select-file-btn');
+    // Get DOM elements
+    let selectFileBtn = document.getElementById('select-file-btn');
     const selectedFilePath = document.getElementById('selected-file-path');
-    const importDataBtn = document.getElementById('import-data-btn');
-    const clearImportBtn = document.getElementById('clear-import-btn');
+    let importDataBtn = document.getElementById('import-data-btn');
+    let clearImportBtn = document.getElementById('clear-import-btn');
     const importStatus = document.getElementById('import-status');
     const importTypeSelector = document.getElementById('import-type-selector');
-    const importedRecordsContainer = document.getElementById('imported-records');
+    const importedRecords = document.getElementById('imported-records');
+    const importLoading = document.getElementById('import-loading');
     
-    let excelFilePath = '';
+    let excelFilePath = null;
     let currentImportType = 'autodetect';
+    let previewData = null;
     
-    // Event listeners
+    // Load preview modules
+    const excelPreview = require('./src/excelPreview.js');
+    const { displaySysWebPreview } = excelPreview;
+    
+    if (importTypeSelector) {
+        importTypeSelector.addEventListener('change', (event) => {
+            currentImportType = event.target.value;
+            console.log(`Import type changed to: ${currentImportType}`);
+            
+            // Reset preview data when import type changes
+            previewData = null;
+            
+            // If a file was already selected, enable the import button
+            if (excelFilePath) {
+                importDataBtn.disabled = false;
+            }
+        });
+    }
+    
+    // File selection - remove existing listeners first
     if (selectFileBtn) {
+        // Remove existing listeners to prevent duplicates
+        const newSelectBtn = selectFileBtn.cloneNode(true);
+        selectFileBtn.parentNode.replaceChild(newSelectBtn, selectFileBtn);
+        selectFileBtn = newSelectBtn;
+        
         selectFileBtn.addEventListener('click', async () => {
-            console.log('Select file button clicked');
             try {
-                const result = await ipcRenderer.invoke('select-file', {
+                const { ipcRenderer } = require('electron');
+                const result = await ipcRenderer.invoke('open-file-dialog', {
                     title: 'Select Excel File',
                     filters: [
                         { name: 'Excel Files', extensions: ['xlsx', 'xls'] }
                     ]
                 });
                 
-                console.log('File selection result:', result);
-                
                 if (result && result.filePaths && result.filePaths.length > 0) {
                     excelFilePath = result.filePaths[0];
-                    console.log('Selected file path:', excelFilePath);
                     selectedFilePath.textContent = excelFilePath;
                     importDataBtn.disabled = false;
                     
-                    showImportStatus('File selected successfully', 'info');
-                } else if (result && !result.canceled) {
-                    console.warn('No file paths returned but dialog not canceled');
-                    showImportStatus('No file selected', 'error');
-                } else {
-                    console.log('File selection canceled');
+                    // Reset preview data when new file is selected
+                    previewData = null;
+                    
+                    console.log('Selected file:', excelFilePath);
+                    showImportStatus('File selected. Click "Process" to import data.', 'info');
                 }
             } catch (error) {
                 console.error('Error selecting file:', error);
-                showImportStatus(`Error selecting file: ${error.message}`, 'error');
+                showImportStatus('Error selecting file: ' + error.message, 'error');
             }
         });
     }
     
-    if (importTypeSelector) {
-        importTypeSelector.addEventListener('change', () => {
-            currentImportType = importTypeSelector.value;
-            console.log(`Import type changed to: ${currentImportType}`);
+    // Clear import - remove existing listeners first
+    if (clearImportBtn) {
+        // Remove existing listeners to prevent duplicates
+        const newClearBtn = clearImportBtn.cloneNode(true);
+        clearImportBtn.parentNode.replaceChild(newClearBtn, clearImportBtn);
+        clearImportBtn = newClearBtn;
+        
+        clearImportBtn.addEventListener('click', () => {
+            excelFilePath = null;
+            selectedFilePath.textContent = 'No file selected';
+            importDataBtn.disabled = true;
+            importedRecords.innerHTML = '<p>Import data to see records.</p>';
+            previewData = null;
+            showImportStatus('', '');
         });
     }
     
+    // Process data button - remove existing listeners first
     if (importDataBtn) {
+        // Remove existing listeners to prevent duplicates
+        const newImportBtn = importDataBtn.cloneNode(true);
+        importDataBtn.parentNode.replaceChild(newImportBtn, importDataBtn);
+        importDataBtn = newImportBtn;
+        
         importDataBtn.addEventListener('click', async () => {
-            console.log('Import button clicked');
+            console.log('Process imported data button clicked');
             
             if (!excelFilePath) {
                 showImportStatus('Please select a file first', 'error');
-                console.error('No file selected for import');
                 return;
             }
             
+            // Show loading indicator
+            if (importLoading) importLoading.style.display = 'flex';
+            
             try {
-                console.log(`Starting import process for type: ${currentImportType}, file: ${excelFilePath}`);
-                showImportStatus(`Importing ${currentImportType} data...`, 'info');
+                const { ipcRenderer } = require('electron');
+                showImportStatus(`Parsing ${currentImportType} data...`, 'info');
                 
+                // First, just parse the data without importing
                 let result;
                 
-                // Call appropriate import method based on type
+                // Parse based on the import type
                 switch (currentImportType) {
                     case 'worktime':
-                        console.log('Calling import-sysweb-excel');
-                        result = await ipcRenderer.invoke('import-sysweb-excel', excelFilePath);
+                        // For SysWeb/worktime, we need to preview first
+                        console.log('Parsing SysWeb data for preview');
+                        result = await ipcRenderer.invoke('parse-sysweb-excel', excelFilePath);
                         break;
                     case 'alerts':
-                        console.log('Calling import-alerts-excel');
-                        result = await ipcRenderer.invoke('import-alerts-excel', excelFilePath);
-                        break;
                     case 'ifleet':
-                        console.log('Calling import-ifleet-excel');
-                        result = await ipcRenderer.invoke('import-ifleet-excel', excelFilePath);
-                        break;
                     case 'autodetect':
                     default:
-                        console.log('Calling import-autodetect-excel');
-                        result = await ipcRenderer.invoke('import-autodetect-excel', excelFilePath);
+                        // For other types, proceed directly to import
+                        console.log(`Importing ${currentImportType} data directly`);
+                        result = await performDirectImport(excelFilePath, currentImportType);
                         break;
                 }
                 
-                console.log('Import result:', result);
+                if (importLoading) importLoading.style.display = 'none';
+                
+                console.log('Parse result:', result);
                 
                 if (result && result.success) {
-                    showImportStatus(result.message, 'success');
-                    
-                    // Load and display the imported data based on type
-                    await loadImportedData(currentImportType);
+                    // For SysWeb/worktime, show preview before final import
+                    if (currentImportType === 'worktime' && result.data) {
+                        previewData = result.data;
+                        showImportStatus('Data parsed successfully. Please review and confirm import.', 'success');
+                        
+                        // Show preview
+                        displaySysWebPreview(previewData, importedRecords);
+                    } else {
+                        // For other types, we already performed the import
+                        showImportStatus(result.message, 'success');
+                        displayImportedData(currentImportType);
+                    }
                 } else {
-                    showImportStatus(`Import failed: ${result ? result.message : 'Unknown error'}`, 'error');
-                    console.error('Import failed:', result);
+                    showImportStatus(`Parse failed: ${result ? result.message : 'Unknown error'}`, 'error');
                 }
             } catch (error) {
-                console.error('Error importing data:', error);
-                showImportStatus(`Import error: ${error.message}`, 'error');
+                console.error('Error processing data:', error);
+                showImportStatus(`Error processing data: ${error.message}`, 'error');
+                if (importLoading) importLoading.style.display = 'none';
             }
         });
     }
     
-    if (clearImportBtn) {
-        clearImportBtn.addEventListener('click', () => {
-            excelFilePath = '';
-            selectedFilePath.textContent = 'No file selected';
-            importDataBtn.disabled = true;
-            showImportStatus('', '');
-            
-            // Clear the display
-            if (importedRecordsContainer) {
-                importedRecordsContainer.innerHTML = '<p>Import data to see records.</p>';
-            }
-        });
-    }
-    
-    // Refresh button
-    const refreshBtn = document.querySelector('#import-tab .refresh-btn');
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', async () => {
-            await loadImportedData(currentImportType);
-            showImportStatus('Data refreshed', 'info');
-        });
-    }
-    
-    // Function to load imported data based on type
-    async function loadImportedData(type) {
+    // Listen for preview confirmation events from excelPreview.js
+    document.addEventListener('sysweb-import-confirmed', async (event) => {
+        if (!event.detail || !event.detail.data) {
+            showImportStatus('No data available for import', 'error');
+            return;
+        }
+        
+        // Show loading indicator
+        if (importLoading) importLoading.style.display = 'flex';
+        
         try {
-            let data;
+            const { ipcRenderer } = require('electron');
+            showImportStatus('Importing data to database...', 'info');
             
-            switch (type) {
-                case 'worktime':
-                    data = await ipcRenderer.invoke('get-sysweb-data');
-                    renderWorktimeData(data);
-                    break;
-                case 'alerts':
-                    data = await ipcRenderer.invoke('get-alerts-data');
-                    renderAlertsData(data);
-                    break;
-                case 'ifleet':
-                    data = await ipcRenderer.invoke('get-ifleet-data');
-                    renderIFleetData(data);
-                    break;
-                case 'autodetect':
-                default:
-                    // Try to get the most recently imported data
-                    data = await ipcRenderer.invoke('get-latest-import-data');
-                    renderAutodetectData(data);
-                    break;
+            // Perform the actual import
+            const result = await ipcRenderer.invoke('import-sysweb-data', event.detail.data);
+            
+            if (importLoading) importLoading.style.display = 'none';
+            
+            if (result && result.success) {
+                showImportStatus(result.message, 'success');
+                // Refresh the display with data from database
+                displayImportedData('worktime');
+                
+                // Hide the preview controls since we've completed the import
+                const confirmControls = importedRecords.querySelector('.preview-controls');
+                if (confirmControls) {
+                    confirmControls.style.display = 'none';
+                }
+            } else {
+                showImportStatus(`Import failed: ${result ? result.message : 'Unknown error'}`, 'error');
             }
         } catch (error) {
-            console.error(`Error loading ${type} data:`, error);
-            showImportStatus(`Error loading data: ${error.message}`, 'error');
+            console.error('Error importing confirmed data:', error);
+            showImportStatus(`Error importing data: ${error.message}`, 'error');
+            if (importLoading) importLoading.style.display = 'none';
         }
-    }
+    });
     
-    // Render functions for different data types
-    function renderWorktimeData(data) {
-        if (!importedRecordsContainer) return;
+    // Helper function for direct import (non-previewed types)
+    async function performDirectImport(filePath, importType) {
+        const { ipcRenderer } = require('electron');
+        let result;
         
-        if (!data || data.length === 0) {
-            importedRecordsContainer.innerHTML = '<p>No Worktime records found. Import data first.</p>';
-            return;
-        }
-        
-        // Create table
-        let html = `
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Job Title</th>
-                        <th>Cost Center</th>
-                        <th>Date</th>
-                        <th>Planned Shift</th>
-                        <th>Actual</th>
-                        <th>Check In</th>
-                        <th>Check Out</th>
-                        <th>Worked Time</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        
-        // Add rows
-        data.forEach(record => {
-            html += `
-                <tr>
-                    <td>${record.name || ''}</td>
-                    <td>${record.jobtitle || ''}</td>
-                    <td>${record.costcenter || ''}</td>
-                    <td>${record.date || ''}</td>
-                    <td>${record.planedshift || ''}</td>
-                    <td>${record.actual || ''}</td>
-                    <td>${record.check_in || ''}</td>
-                    <td>${record.check_out || ''}</td>
-                    <td>${record.workedTime || ''}</td>
-                </tr>
-            `;
-        });
-        
-        html += `
-                </tbody>
-            </table>
-        `;
-        
-        importedRecordsContainer.innerHTML = html;
-    }
-    
-    function renderAlertsData(data) {
-        const container = document.getElementById('imported-data');
-        if (!container) return;
-        
-        if (!data || data.length === 0) {
-            container.innerHTML = '<div class="no-data">No alert data available.</div>';
-            return;
-        }
-        
-        let html = `
-            <h3>Imported Alert Data</h3>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Plate Number</th>
-                        <th>Arrival Time</th>
-                        <th>Standing Duration</th>
-                        <th>Position</th>
-                        <th>Important Point</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        
-        data.forEach(record => {
-            html += `
-                <tr>
-                    <td>${record.plate_number || ''}</td>
-                    <td>${record.arrival_time || ''}</td>
-                    <td>${record.status || ''}</td>
-                    <td>${record.position || ''}</td>
-                    <td>${record.important_point ? 'Yes' : 'No'}</td>
-                </tr>
-            `;
-        });
-        
-        html += `
-                </tbody>
-            </table>
-        `;
-        
-        container.innerHTML = html;
-    }
-    
-    function renderIFleetData(data) {
-        if (!importedRecordsContainer) return;
-        
-        if (!data || data.length === 0) {
-            importedRecordsContainer.innerHTML = '<p>No iFleet records found. Import data first.</p>';
-            return;
-        }
-        
-        // For now, display a placeholder message
-        // This would be replaced with actual iFleet data rendering
-        importedRecordsContainer.innerHTML = '<p>iFleet data imported successfully. Functionality coming soon.</p>';
-    }
-    
-    function renderAutodetectData(data) {
-        if (!importedRecordsContainer) return;
-        
-        if (!data || !data.type || !data.records || data.records.length === 0) {
-            importedRecordsContainer.innerHTML = '<p>No data detected. Please try a specific import type.</p>';
-            return;
-        }
-        
-        // Based on detected type, render accordingly
-        switch (data.type) {
-            case 'worktime':
-                renderWorktimeData(data.records);
-                break;
+        switch (importType) {
             case 'alerts':
-                renderAlertsData(data.records);
+                result = await ipcRenderer.invoke('import-alerts-excel', filePath);
                 break;
             case 'ifleet':
-                renderIFleetData(data.records);
+                result = await ipcRenderer.invoke('import-ifleet-excel', filePath);
                 break;
+            case 'autodetect':
             default:
-                importedRecordsContainer.innerHTML = '<p>Unknown data type detected. Please try a specific import type.</p>';
+                result = await ipcRenderer.invoke('import-autodetect-excel', filePath);
+                break;
         }
+        
+        return result;
     }
     
-    // Function to show import status
+    // Helper function to show import status
     function showImportStatus(message, type) {
         if (!importStatus) return;
         
@@ -1856,118 +596,158 @@ function initializeEnhancedImport() {
         importStatus.className = 'status-message';
         
         if (type) {
-            importStatus.classList.add(type);
+            importStatus.classList.add(`status-${type}`);
         }
     }
     
-    // Initial check for already imported data
-    loadImportedData('worktime');
-}
-
-// Import SysWeb Excel file directly (from Excel parser)
-async function importSysWebExcel(filePath) {
-    console.log('Importing SysWeb Excel file directly:', filePath);
-    
-    // Show loading indicator
-    const importResults = document.getElementById('import-results');
-    if (importResults) {
-        importResults.innerHTML = '<div class="status-message loading">Importing SysWeb data...</div>';
-        importResults.style.display = 'block';
+    // Helper function to display imported data
+    function displayImportedData(dataType) {
+        if (!importedRecords) return;
+        
+        // Set a loading message
+        importedRecords.innerHTML = '<p>Loading imported data...</p>';
+        
+        // Different display logic based on data type
+        switch (dataType) {
+            case 'worktime':
+                displaySysWebImportedData();
+                break;
+            case 'alerts':
+                displayAlertsImportedData();
+                break;
+            case 'ifleet':
+                displayIFleetImportedData();
+                break;
+            default:
+                importedRecords.innerHTML = '<p>No data available to display.</p>';
+                break;
+        }
     }
     
-    try {
-        // Parse the Excel file
-        const result = await ipcRenderer.invoke('parse-sys-web-excel', filePath);
-        console.log('SysWeb Excel parsing result:', result);
-        
-        if (result.success) {
-            // Show success message
-            if (importResults) {
-                importResults.innerHTML = `
-                    <div class="status-message success">
-                        <h3>Import Successful</h3>
-                        <p>Successfully imported ${result.success} records.</p>
-                        ${result.errors > 0 ? `<p>Encountered ${result.errors} errors.</p>` : ''}
-                    </div>
-                `;
+    // Function to display SysWeb data from the database
+    async function displaySysWebImportedData() {
+        try {
+            const { ipcRenderer } = require('electron');
+            const data = await ipcRenderer.invoke('get-sysweb-data');
+            
+            if (!data || data.length === 0) {
+                importedRecords.innerHTML = '<p>No SysWeb data found in the database.</p>';
+                return;
             }
             
-            // Reload the data in the relevant tables
-            loadImportedData('sys_web');
-        } else {
-            // Show error message
-            if (importResults) {
-                importResults.innerHTML = `
-                    <div class="status-message error">
-                        <h3>Import Failed</h3>
-                        <p>${result.message || 'An unknown error occurred.'}</p>
-                    </div>
+            // Group by name for display
+            const groupedData = {};
+            data.forEach(record => {
+                if (!groupedData[record.name]) {
+                    groupedData[record.name] = [];
+                }
+                groupedData[record.name].push(record);
+            });
+            
+            let html = `
+                <div class="table-summary">
+                    <p>Showing ${data.length} records for ${Object.keys(groupedData).length} people.</p>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Job Title</th>
+                                <th>Cost Center</th>
+                                <th>Date</th>
+                                <th>Planned Shift</th>
+                                <th>Actual</th>
+                                <th>Check In</th>
+                                <th>Check Out</th>
+                                <th>Worked Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.forEach(record => {
+                html += `
+                    <tr>
+                        <td>${record.name || ''}</td>
+                        <td>${record.jobtitle || ''}</td>
+                        <td>${record.costcenter || ''}</td>
+                        <td>${record.date || ''}</td>
+                        <td>${record.planedshift || ''}</td>
+                        <td>${record.actual || ''}</td>
+                        <td>${record.check_in || ''}</td>
+                        <td>${record.check_out || ''}</td>
+                        <td>${record.workedTime || ''}</td>
+                    </tr>
                 `;
-            }
-        }
-    } catch (error) {
-        console.error('Error importing SysWeb Excel:', error);
-        if (importResults) {
-            importResults.innerHTML = `
-                <div class="status-message error">
-                    <h3>Import Error</h3>
-                    <p>${error.message || 'An unknown error occurred.'}</p>
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
                 </div>
             `;
+            
+            importedRecords.innerHTML = html;
+        } catch (error) {
+            console.error('Error displaying SysWeb data:', error);
+            importedRecords.innerHTML = `<p class="error">Error displaying data: ${error.message}</p>`;
         }
     }
-}
-
-// Import Alert Excel file directly
-async function importAlertExcel(filePath) {
-    console.log('Importing Alert Excel file directly:', filePath);
     
-    // Show loading indicator
-    const importResults = document.getElementById('import-results');
-    if (importResults) {
-        importResults.innerHTML = '<div class="status-message loading">Importing Alert data...</div>';
-        importResults.style.display = 'block';
-    }
-    
-    try {
-        // Parse the Excel file
-        const result = await ipcRenderer.invoke('parse-alert-excel', filePath);
-        console.log('Alert Excel parsing result:', result);
-        
-        if (result.success) {
-            // Show success message
-            if (importResults) {
-                importResults.innerHTML = `
-                    <div class="status-message success">
-                        <h3>Import Successful</h3>
-                        <p>Successfully imported ${result.success} alert records.</p>
-                        ${result.errors > 0 ? `<p>Encountered ${result.errors} errors.</p>` : ''}
-                    </div>
-                `;
+    // Function to display Alerts data from the database
+    async function displayAlertsImportedData() {
+        try {
+            const { ipcRenderer } = require('electron');
+            const alertsData = await ipcRenderer.invoke('get-alerts-data');
+            
+            if (!alertsData || alertsData.length === 0) {
+                importedRecords.innerHTML = '<p>No alert data available. Import data first.</p>';
+                return;
             }
             
-            // Reload the data in the relevant tables
-            loadImportedData('stop_events_alert');
-        } else {
-            // Show error message
-            if (importResults) {
-                importResults.innerHTML = `
-                    <div class="status-message error">
-                        <h3>Import Failed</h3>
-                        <p>${result.message || 'An unknown error occurred.'}</p>
-                    </div>
+            let html = `
+                <div class="data-table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Plate Number</th>
+                                <th>Arrival Time</th>
+                                <th>Standing Duration</th>
+                                <th>Position</th>
+                                <th>Important Point</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            alertsData.forEach(record => {
+                html += `
+                    <tr>
+                        <td>${record.plate_number || ''}</td>
+                        <td>${record.arrival_time || ''}</td>
+                        <td>${record.status || ''}</td>
+                        <td>${record.position || ''}</td>
+                        <td>${record.important_point || ''}</td>
+                    </tr>
                 `;
-            }
-        }
-    } catch (error) {
-        console.error('Error importing Alert Excel:', error);
-        if (importResults) {
-            importResults.innerHTML = `
-                <div class="status-message error">
-                    <h3>Import Error</h3>
-                    <p>${error.message || 'An unknown error occurred.'}</p>
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
                 </div>
             `;
+            
+            importedRecords.innerHTML = html;
+        } catch (error) {
+            console.error('Error displaying Alerts data:', error);
+            importedRecords.innerHTML = `<p class="error">Error displaying data: ${error.message}</p>`;
         }
+    }
+    
+    // Function to display iFleet data from the database
+    async function displayIFleetImportedData() {
+        importedRecords.innerHTML = '<p>iFleet data display not implemented yet.</p>';
     }
 } 
