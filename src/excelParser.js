@@ -248,6 +248,11 @@ class ExcelParser {
             console.log('Searching for person sections...');
             const sectionIndices = [];
             
+            // Detailed logging for the first few rows to help with debugging
+            for (let i = 0; i < Math.min(20, resolvedData.length); i++) {
+                console.log(`Debug Row ${i}:`, JSON.stringify(resolvedData[i]));
+            }
+            
             // Look for "Jelentési ív" which signals the start of a person section
             for (let i = 0; i < resolvedData.length; i++) {
                 const row = resolvedData[i];
@@ -255,10 +260,29 @@ class ExcelParser {
                 
                 for (let j = 0; j < row.length; j++) {
                     const cell = row[j];
-                    if (cell && String(cell).trim() === 'Jelentési ív') {
+                    if (cell && String(cell).trim().includes('Jelentési ív')) {
                         sectionIndices.push({ startIndex: i, nameRow: i + 1 });
                         console.log(`Found person section start at row ${i}`);
                         break;
+                    }
+                }
+            }
+            
+            // If no sections found, try a more flexible search
+            if (sectionIndices.length === 0) {
+                console.log("No sections found with 'Jelentési ív'. Trying more flexible search...");
+                for (let i = 0; i < resolvedData.length; i++) {
+                    const row = resolvedData[i];
+                    if (!row) continue;
+                    
+                    // Look for "Név:" which is a common field in these sheets
+                    for (let j = 0; j < row.length; j++) {
+                        const cell = row[j];
+                        if (cell && String(cell).trim() === 'Név:') {
+                            sectionIndices.push({ startIndex: i-2, nameRow: i });
+                            console.log(`Found person section with "Név:" at row ${i}`);
+                            break;
+                        }
                     }
                 }
             }
@@ -309,84 +333,6 @@ class ExcelParser {
                 // Extract data for this section
                 const sectionData = resolvedData.slice(section.startIndex, section.endIndex + 1);
                 
-                // Find headers in this section
-                let nameRow = -1;
-                let dateRow = -1;
-                let dateCol = -1;
-                let planedCol = -1;
-                let actualCol = -1;
-                let checkInCol = -1;
-                let checkOutCol = -1;
-                let workedTimeCol = -1;
-                
-                // Look for info rows like "Név:" (name) in the section
-                for (let i = 0; i < Math.min(10, sectionData.length); i++) {
-                    const row = sectionData[i];
-                    if (!row) continue;
-                    
-                    for (let j = 0; j < row.length; j++) {
-                        const cell = row[j];
-                        if (!cell) continue;
-                        
-                        const cellValue = String(cell).trim().toLowerCase();
-                        
-                        if (cellValue === 'név:') {
-                            nameRow = i;
-                            console.log(`Found 'név:' at section row ${i}`);
-                        }
-                    }
-                }
-                
-                // Look for column headers (Dátum, Terv, Tény, etc.)
-                for (let i = 0; i < sectionData.length; i++) {
-                    const row = sectionData[i];
-                    if (!row) continue;
-                    
-                    let foundHeader = false;
-                    for (let j = 0; j < row.length; j++) {
-                        const cell = row[j];
-                        if (!cell) continue;
-                        
-                        const cellValue = String(cell).trim().toLowerCase();
-                        
-                        if (cellValue === 'dátum') {
-                            dateRow = i;
-                            dateCol = j;
-                            foundHeader = true;
-                            console.log(`Found 'dátum' at section row ${i}, col ${j}`);
-                        } else if (cellValue === 'terv') {
-                            planedCol = j;
-                            console.log(`Found 'terv' at section row ${i}, col ${j}`);
-                        } else if (cellValue === 'tény') {
-                            actualCol = j;
-                            console.log(`Found 'tény' at section row ${i}, col ${j}`);
-                        } else if (cellValue === 'ledolg.') {
-                            workedTimeCol = j;
-                            console.log(`Found 'ledolg.' at section row ${i}, col ${j}`);
-                        }
-                    }
-                    
-                    // If we found a header row, look for BE/KI in the next row
-                    if (foundHeader && i + 1 < sectionData.length) {
-                        const nextRow = sectionData[i + 1];
-                        if (nextRow) {
-                            for (let j = 0; j < nextRow.length; j++) {
-                                const cell = nextRow[j];
-                                if (!cell) continue;
-                                
-                                const cellValue = String(cell).trim().toLowerCase();
-                                if (cellValue === 'be') {
-                                    checkInCol = j;
-                                    console.log(`Found 'be' at section row ${i+1}, col ${j}`);
-                                } else if (cellValue === 'ki') {
-                                    checkOutCol = j;
-                                    console.log(`Found 'ki' at section row ${i+1}, col ${j}`);
-                                }
-                            }
-                        }
-                    }
-                }
-                
                 // Extract employee info
                 const employeeInfo = {
                     name: '',
@@ -395,7 +341,7 @@ class ExcelParser {
                 };
                 
                 // Look for employee info in this section
-                for (let i = 0; i < Math.min(10, sectionData.length); i++) {
+                for (let i = 0; i < Math.min(15, sectionData.length); i++) {
                     const row = sectionData[i];
                     if (!row) continue;
                     
@@ -403,16 +349,38 @@ class ExcelParser {
                         const cell = row[j];
                         if (!cell) continue;
                         
-                        const cellValue = String(cell).trim().toLowerCase();
+                        const cellValue = String(cell).trim();
                         
-                        if (cellValue === 'név:' && j + 1 < row.length) {
+                        // Name detection (handling different formats)
+                        if (cellValue === 'Név:' && j + 1 < row.length) {
                             employeeInfo.name = row[j + 1] || '';
                             console.log(`Found name: ${employeeInfo.name}`);
-                        } else if ((cellValue === 'egység:' || cellValue === 'munkarend:') && j + 1 < row.length) {
+                        } 
+                        // Check if the name is in the next cell without a label
+                        else if (j > 0 && row[j-1] && String(row[j-1]).trim() === 'Név:') {
+                            employeeInfo.name = cellValue;
+                            console.log(`Found name: ${employeeInfo.name}`);
+                        }
+                        
+                        // Job title detection (handling different formats)
+                        if ((cellValue === 'Munkarend:' || cellValue === 'Egység:') && j + 1 < row.length) {
                             employeeInfo.jobtitle = row[j + 1] || '';
                             console.log(`Found job title: ${employeeInfo.jobtitle}`);
-                        } else if ((cellValue === 'költséghely:' || cellValue === 'állomány:') && j + 1 < row.length) {
+                        } 
+                        // Check if job title is in the next cell
+                        else if (j > 0 && row[j-1] && (String(row[j-1]).trim() === 'Munkarend:' || String(row[j-1]).trim() === 'Egység:')) {
+                            employeeInfo.jobtitle = cellValue;
+                            console.log(`Found job title: ${employeeInfo.jobtitle}`);
+                        }
+                        
+                        // Cost center detection (handling different formats)
+                        if ((cellValue === 'Költséghely:' || cellValue === 'Állomány:') && j + 1 < row.length) {
                             employeeInfo.costcenter = row[j + 1] || '';
+                            console.log(`Found cost center: ${employeeInfo.costcenter}`);
+                        }
+                        // Check if cost center is in the next cell
+                        else if (j > 0 && row[j-1] && (String(row[j-1]).trim() === 'Költséghely:' || String(row[j-1]).trim() === 'Állomány:')) {
+                            employeeInfo.costcenter = cellValue;
                             console.log(`Found cost center: ${employeeInfo.costcenter}`);
                         }
                     }
@@ -420,22 +388,90 @@ class ExcelParser {
                 
                 console.log(`Employee info for section ${sectionIdx + 1}:`, employeeInfo);
                 
-                // Process rows of data for this person
-                if (dateRow < 0 || dateCol < 0) {
+                // Find the data headers row with "Dátum", "Terv", "Tény", etc.
+                let headerRow = -1;
+                let dateCol = -1;
+                let planedCol = -1;
+                let actualCol = -1;
+                let checkInCol = -1;
+                let checkOutCol = -1;
+                let workedTimeCol = -1;
+                
+                for (let i = 0; i < sectionData.length; i++) {
+                    const row = sectionData[i];
+                    if (!row) continue;
+                    
+                    let foundDatumHeader = false;
+                    for (let j = 0; j < row.length; j++) {
+                        const cell = row[j];
+                        if (!cell) continue;
+                        
+                        const cellValue = String(cell).trim().toLowerCase();
+                        
+                        if (cellValue === 'dátum') {
+                            headerRow = i;
+                            dateCol = j;
+                            foundDatumHeader = true;
+                            console.log(`Found 'dátum' at section row ${i}, col ${j}`);
+                        } else if (cellValue === 'terv') {
+                            planedCol = j;
+                            console.log(`Found 'terv' at section row ${i}, col ${j}`);
+                        } else if (cellValue === 'tény') {
+                            actualCol = j;
+                            console.log(`Found 'tény' at section row ${i}, col ${j}`);
+                        } else if (cellValue === 'ledolg.' || cellValue.includes('ledolg')) {
+                            workedTimeCol = j;
+                            console.log(`Found 'ledolg' at section row ${i}, col ${j}`);
+                        }
+                    }
+                    
+                    // If we found the header row, look for BE/KI in the next rows
+                    if (foundDatumHeader && i + 1 < sectionData.length) {
+                        // Look in the next 2 rows for BE/KI headers
+                        for (let nextRow = 1; nextRow <= 2; nextRow++) {
+                            if (i + nextRow >= sectionData.length) continue;
+                            
+                            const subHeaderRow = sectionData[i + nextRow];
+                            if (!subHeaderRow) continue;
+                            
+                            for (let j = 0; j < subHeaderRow.length; j++) {
+                                const cell = subHeaderRow[j];
+                                if (!cell) continue;
+                                
+                                const cellValue = String(cell).trim().toLowerCase();
+                                if (cellValue === 'be') {
+                                    checkInCol = j;
+                                    console.log(`Found 'be' at section row ${i+nextRow}, col ${j}`);
+                                } else if (cellValue === 'ki') {
+                                    checkOutCol = j;
+                                    console.log(`Found 'ki' at section row ${i+nextRow}, col ${j}`);
+                                }
+                            }
+                        }
+                        
+                        // If we found BE/KI, don't continue searching in more rows
+                        if (checkInCol >= 0 || checkOutCol >= 0) {
+                            break;
+                        }
+                    }
+                }
+                
+                if (headerRow < 0 || dateCol < 0) {
                     console.warn(`Could not find date column in section ${sectionIdx + 1}, skipping`);
                     continue;
                 }
                 
+                // Process rows of data for this person
                 const sectionRecords = [];
                 
-                // Start from dateRow + 2 (where actual data starts)
-                let dataStartRow = dateRow + 2;
+                // Start from headerRow + (checkInCol >= 0 ? 3 : 1) to skip header and potential BE/KI row
+                let dataStartRow = headerRow + (checkInCol >= 0 ? 3 : 1);
                 console.log(`Starting to process data from section row ${dataStartRow}`);
                 
                 // Process until we hit the end of the section or "Összesen" row
                 while (dataStartRow < sectionData.length) {
                     const row = sectionData[dataStartRow];
-                    if (!row || !row[dateCol]) break; // Stop at empty row or row without date
+                    if (!row) break; // Stop at empty row
                     
                     // Check if this is the 'Összesen' row
                     let isTotal = false;
@@ -449,14 +485,24 @@ class ExcelParser {
                     
                     // Skip the total row
                     if (isTotal) {
+                        console.log(`Found 'Összesen' row at ${dataStartRow}, stopping data collection`);
                         break;
                     }
                     
+                    // Check if we have a date in the date column
+                    const dateCell = row[dateCol];
+                    if (!dateCell) {
+                        console.log(`No date found at row ${dataStartRow}, skipping`);
+                        dataStartRow++;
+                        continue;
+                    }
+                    
+                    // Create the record with the data from this row
                     const record = {
                         name: employeeInfo.name,
                         jobtitle: employeeInfo.jobtitle,
                         costcenter: employeeInfo.costcenter,
-                        date: row[dateCol] || '',
+                        date: dateCell,
                         planedshift: planedCol >= 0 ? (row[planedCol] || '') : '',
                         actual: actualCol >= 0 ? (row[actualCol] || '') : '',
                         check_in: checkInCol >= 0 ? (row[checkInCol] || '') : '',
