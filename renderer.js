@@ -785,14 +785,125 @@ function initializeImport() {
     async function displayAlertsImportedData() {
         try {
             const { ipcRenderer } = require('electron');
-            const alertsData = await ipcRenderer.invoke('get-alerts-data');
+            const data = await ipcRenderer.invoke('get-alerts-data');
             
-            if (!alertsData || alertsData.length === 0) {
+            if (!data || data.length === 0) {
                 importedRecords.innerHTML = '<p>No alert data available. Import data first.</p>';
                 return;
             }
             
+            // Group by plate number and filter out duplicates
+            const groupedByPlate = {};
+            const seenEntries = new Set(); // Track unique entries
+            const allRecords = []; // Keep track of all valid records for initial display
+            
+            data.forEach(record => {
+                const plate = record.plate_number || 'Unknown';
+                // Skip invalid plate numbers/header data
+                if (plate.toLowerCase().includes('rendszám') || 
+                    plate.toLowerCase().includes('terület') || 
+                    plate.toLowerCase().includes('telephely') ||
+                    plate === 'Unknown' ||
+                    !isValidPlateNumber(plate)) {
+                    return;
+                }
+                
+                // Create a unique key for this record to deduplicate
+                const uniqueKey = `${plate}-${record.arrival_time}-${record.position}`;
+                if (seenEntries.has(uniqueKey)) {
+                    return; // Skip duplicates
+                }
+                seenEntries.add(uniqueKey);
+                
+                if (!groupedByPlate[plate]) {
+                    groupedByPlate[plate] = [];
+                }
+                
+                // Format the record
+                const formattedRecord = formatAlertRecord(record);
+                groupedByPlate[plate].push(formattedRecord);
+                allRecords.push(formattedRecord); // Add to all records for initial display
+            });
+            
+            // Get unique valid plate numbers
+            const validPlates = Object.keys(groupedByPlate).filter(plate => 
+                isValidPlateNumber(plate)
+            );
+            
+            // Helper function to format a record
+            function formatAlertRecord(record) {
+                // Format arrival time
+                let arrivalTime = record.arrival_time;
+                if (arrivalTime) {
+                    try {
+                        const date = new Date(arrivalTime);
+                        if (!isNaN(date.getTime())) {
+                            arrivalTime = date.toLocaleString();
+                        }
+                    } catch (e) {
+                        // Keep as is if can't parse
+                    }
+                }
+                
+                // Keep the original important_point value as is - it contains company names
+                let importantPoint = record.important_point;
+                
+                return {
+                    plate_number: record.plate_number || '',
+                    arrival_time: arrivalTime || '',
+                    status: record.status || '',
+                    position: record.position || '',
+                    important_point: importantPoint
+                };
+            }
+            
+            // Helper function to validate plate numbers
+            function isValidPlateNumber(plate) {
+                // Must contain hyphen, be between 5-10 chars, and not contain header-like terms
+                return plate !== 'Unknown' && 
+                       plate.includes('-') && 
+                       plate.length >= 5 && 
+                       plate.length <= 10 &&
+                       !plate.toLowerCase().includes('rendszám') &&
+                       !plate.toLowerCase().includes('terület') &&
+                       !plate.toLowerCase().includes('telephely') &&
+                       !plate.toLowerCase().includes('időpont') &&
+                       !plate.toLowerCase().includes('irány') &&
+                       !plate.toLowerCase().includes('töltött') &&
+                       !plate.toLowerCase().includes('megtett');
+            }
+            
+            // Count total records after deduplication
+            const totalRecords = Object.values(groupedByPlate).reduce(
+                (sum, records) => sum + records.length, 0
+            );
+            
             let html = `
+                <div class="table-summary">
+                    <p>Showing ${totalRecords} records for ${validPlates.length} vehicles.</p>
+                </div>
+            `;
+            
+            // Create selection dropdown for vehicles
+            html += `
+                <div class="vehicle-filter">
+                    <select id="alert-vehicle-selector" class="form-control select-dropdown">
+                        <option value="">-- All Vehicles --</option>
+                        ${validPlates.map(plate => `<option value="${plate}">${plate} (${groupedByPlate[plate].length} records)</option>`).join('')}
+                    </select>
+                </div>
+            `;
+            
+            // Add confirm import button
+            html += `
+                <div class="preview-controls preview-button-container">
+                    <button id="confirm-alert-import" class="btn btn-success import-btn">Import to DB</button>
+                    <button id="cancel-alert-import" class="btn btn-secondary clear-btn">Clear</button>
+                </div>
+            `;
+            
+            // Create a table for data display
+            html += `
                 <div class="data-table-container">
                     <table class="data-table">
                         <thead>
@@ -804,31 +915,151 @@ function initializeImport() {
                                 <th>Important Point</th>
                             </tr>
                         </thead>
-                        <tbody>
-            `;
-            
-            alertsData.forEach(record => {
-                html += `
-                    <tr>
-                        <td>${record.plate_number || ''}</td>
-                        <td>${record.arrival_time || ''}</td>
-                        <td>${record.status || ''}</td>
-                        <td>${record.position || ''}</td>
-                        <td>${record.important_point || ''}</td>
-                    </tr>
-                `;
-            });
-            
-            html += `
+                        <tbody id="alert-vehicle-data">
                         </tbody>
                     </table>
                 </div>
             `;
             
+            // Render the HTML
             importedRecords.innerHTML = html;
+            
+            // Create a map of formatted records for each vehicle
+            const formattedRecords = {};
+            
+            validPlates.forEach(plate => {
+                const records = groupedByPlate[plate];
+                
+                // Sort records by arrival time
+                records.sort((a, b) => {
+                    return new Date(a.arrival_time) - new Date(b.arrival_time);
+                });
+                
+                formattedRecords[plate] = records;
+            });
+            
+            // Function to display records in the table
+            function displayRecords(records) {
+                const vehicleDataContainer = document.getElementById('alert-vehicle-data');
+                if (!vehicleDataContainer) return;
+                
+                if (!records || records.length === 0) {
+                    vehicleDataContainer.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="text-center">No records found</td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                // Render the records
+                let rowsHtml = '';
+                records.forEach(record => {
+                    rowsHtml += `
+                        <tr>
+                            <td>${record.plate_number}</td>
+                            <td>${record.arrival_time}</td>
+                            <td>${record.status}</td>
+                            <td>${record.position}</td>
+                            <td>${record.important_point}</td>
+                        </tr>
+                    `;
+                });
+                
+                vehicleDataContainer.innerHTML = rowsHtml;
+            }
+            
+            // Display all records by default
+            displayRecords(allRecords);
+            
+            // Add event listener to the vehicle selector
+            const vehicleSelector = document.getElementById('alert-vehicle-selector');
+            if (vehicleSelector) {
+                vehicleSelector.addEventListener('change', function() {
+                    const selectedPlate = this.value;
+                    
+                    if (!selectedPlate) {
+                        // Show all records when "All Vehicles" is selected
+                        displayRecords(allRecords);
+                        return;
+                    }
+                    
+                    const records = formattedRecords[selectedPlate] || [];
+                    displayRecords(records);
+                });
+            }
+            
+            // Add event listener for confirm import button
+            const confirmImportBtn = document.getElementById('confirm-alert-import');
+            if (confirmImportBtn) {
+                confirmImportBtn.addEventListener('click', async function() {
+                    try {
+                        if (importLoading) importLoading.style.display = 'flex';
+                        showImportStatus('Importing valid alert data to database...', 'info');
+                        
+                        // Filter data to include only valid plate numbers AND deduplicate at the same time
+                        const uniqueRecords = new Map();
+                        
+                        // First pass - collect only valid plate records with unique keys
+                        data.forEach(record => {
+                            const plate = record.plate_number || '';
+                            
+                            // Skip records with invalid or header-like data
+                            if (!isValidPlateNumber(plate)) return;
+                            
+                            // Create a unique key for each record to avoid duplicates
+                            const uniqueKey = `${plate}-${record.arrival_time}-${record.position}`;
+                            
+                            // Only keep the first occurrence of each unique entry
+                            if (!uniqueRecords.has(uniqueKey)) {
+                                uniqueRecords.set(uniqueKey, record);
+                            }
+                        });
+                        
+                        // Convert the Map values to an array
+                        const validData = Array.from(uniqueRecords.values());
+                        
+                        // Log the deduplication results
+                        console.log(`Filtered from ${data.length} records to ${validData.length} unique records for import`);
+                        
+                        // Trigger the final database update with only unique valid plate numbers
+                        const result = await ipcRenderer.invoke('confirm-alert-import', validData);
+                        
+                        if (importLoading) importLoading.style.display = 'none';
+                        
+                        if (result && result.success) {
+                            showImportStatus(`Successfully imported ${validPlates.length} vehicles (${validData.length} unique records) to database`, 'success');
+                            
+                            // Dispatch event 
+                            const event = new CustomEvent('alert-import-confirmed', {
+                                detail: { 
+                                    data: validData,
+                                    success: true
+                                }
+                            });
+                            document.dispatchEvent(event);
+                        } else {
+                            showImportStatus(`Error importing data: ${result ? result.message : 'Unknown error'}`, 'error');
+                        }
+                    } catch (error) {
+                        if (importLoading) importLoading.style.display = 'none';
+                        showImportStatus(`Error confirming import: ${error.message}`, 'error');
+                    }
+                });
+            }
+            
+            // Add event listener for cancel button
+            const cancelImportBtn = document.getElementById('cancel-alert-import');
+            if (cancelImportBtn) {
+                cancelImportBtn.addEventListener('click', function() {
+                    // Simply reload the current view
+                    displayAlertsImportedData();
+                    showImportStatus('Import cancelled', 'info');
+                });
+            }
         } catch (error) {
-            rendererLogger.error('Error displaying Alerts data', { error: error.message });
-            importedRecords.innerHTML = `<p class="error">Error displaying data: ${error.message}</p>`;
+            console.error('Error displaying alert data:', error);
+            importedRecords.innerHTML = `<p class="error">Error loading alert data: ${error.message}</p>`;
         }
     }
     

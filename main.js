@@ -775,7 +775,10 @@ ipcMain.handle('get-latest-import-data', async (event) => {
 // Handler for retrieving alerts data
 ipcMain.handle('get-alerts-data', async (event) => {
   try {
-    return await database.getAlerts();
+    // Use the getAlerts method instead of getAlerts which was fetching from the wrong table
+    const alertData = await database.db.prepare('SELECT * FROM stop_events_alert ORDER BY arrival_time DESC').all();
+    console.log(`Retrieved ${alertData.length} records from stop_events_alert table`);
+    return alertData;
   } catch (error) {
     console.error('Error getting alerts data:', error);
     return [];
@@ -1154,6 +1157,31 @@ ipcMain.handle('confirm-ifleet-import', async (event, validData) => {
     return {
       success: false,
       message: `Error confirming iFleet import: ${error.message}`,
+      error: error.message
+    };
+  }
+});
+
+// Register the confirm-alert-import handler
+ipcMain.handle('confirm-alert-import', async (event, validData) => {
+  try {
+    logger.info('Confirming alert data import to database', { count: validData.length });
+    
+    // Import the valid records to the database
+    const result = await database.importAlertData(validData);
+    
+    return {
+      success: true,
+      message: `Successfully imported ${result.success} alert records. ${result.errors} errors.`,
+      data: result
+    };
+  } catch (error) {
+    console.error('Error confirming alert import:', error);
+    logger.error('Error confirming alert import', { error: error.message });
+    
+    return {
+      success: false,
+      message: `Error confirming alert import: ${error.message}`,
       error: error.message
     };
   }

@@ -868,24 +868,18 @@ class DriverAlertsDatabase {
       
       records.forEach(record => {
         try {
-          // Skip records with empty plate number
-          if (!record.plate_number) {
-            console.error('Error importing alert: Missing plate_number');
-            errorCount++;
-            return;
-          }
-          
+          // Keep important_point as the original string from Excel
           stmt.run(
             record.plate_number,
             record.arrival_time,
             record.status,
             record.position,
-            record.important_point ? '1' : '0',
+            record.important_point,  // Store as a string, not converted to 0/1
             now
           );
           successCount++;
         } catch (error) {
-          console.error(`Error importing alert: ${error.message}`, record);
+          console.error(`Error importing alert: ${error.message}`);
           errorCount++;
         }
       });

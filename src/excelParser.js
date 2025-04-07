@@ -939,7 +939,7 @@ class ExcelParser {
                     arrival_time: formattedArrivalTime,
                     status: status,
                     position: position,
-                    important_point: importantPoint
+                    important_point: importantPoint  // Use the actual string from the Excel
                 };
                 
                 // Skip records with empty or invalid plate numbers
