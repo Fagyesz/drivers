@@ -512,10 +512,20 @@ class ExcelParser {
                         }
                     }
                     
-                    // Skip the total row
+                    // Skip the total row and any rows after it (signature lines, etc.)
                     if (isTotal) {
                         console.log(`Found 'Összesen' row at ${dataStartRow}, stopping data collection`);
                         break;
+                    }
+
+                    // Also check for signature or other non-data rows (typically have "Munkahelyi vezető" or "Munkavállaló")
+                    const rowText = row.join(' ').toLowerCase();
+                    if (rowText.includes('munkahelyi vezető') || 
+                        rowText.includes('munkavállaló') || 
+                        rowText.includes('aláírás')) {
+                        console.log(`Skipping signature row at ${dataStartRow}`);
+                        dataStartRow++;
+                        continue;
                     }
                     
                     // Check if we have a date in the date column
@@ -635,6 +645,13 @@ class ExcelParser {
                     } else if (typeof record.date === 'string' && record.date.includes('.')) {
                         // Handle date format like "2023.03.01" -> "2023-03-01"
                         record.date = record.date.replace(/\./g, '-');
+                    }
+                    
+                    // Skip the "Összesen" (total) line from being added to the table
+                    if (record.date && String(record.date).includes('Összesen')) {
+                        console.log(`Skipping "Összesen" row with date: ${record.date}`);
+                        dataStartRow++;
+                        continue;
                     }
                     
                     // Log each record as we're processing
