@@ -396,6 +396,7 @@ class ExcelParser {
                 let checkInCol = -1;
                 let checkOutCol = -1;
                 let workedTimeCol = -1;
+                let mozgasokCol = -1;
                 
                 for (let i = 0; i < sectionData.length; i++) {
                     const row = sectionData[i];
@@ -422,6 +423,9 @@ class ExcelParser {
                         } else if (cellValue === 'ledolg.' || cellValue.includes('ledolg')) {
                             workedTimeCol = j;
                             console.log(`Found 'ledolg' at section row ${i}, col ${j}`);
+                        } else if (cellValue === 'mozgások' || cellValue.includes('mozgás')) {
+                            mozgasokCol = j;
+                            console.log(`Found 'mozgások' at section row ${i}, col ${j}`);
                         }
                     }
                     
@@ -461,6 +465,31 @@ class ExcelParser {
                     continue;
                 }
                 
+                // If we found Mozgások header but not specific BE/KI columns, 
+                // assume standard column positions (S-V for BE, W-Z for KI)
+                if (mozgasokCol >= 0 && (checkInCol < 0 || checkOutCol < 0)) {
+                    console.log('Using fixed columns for BE/KI based on Mozgások header');
+                    
+                    // Find the base column index (this would be column S or index 18 in 0-based)
+                    // We'll try to find the actual index by looking at the column position of the Mozgások header
+                    const baseColIndex = mozgasokCol;
+                    
+                    // Columns S-V (indices 18-21) for first set, BE
+                    checkInCol = baseColIndex;
+                    
+                    // Columns W-Z (indices 22-25) for second set, KI
+                    checkOutCol = baseColIndex + 4;
+                    
+                    console.log(`Setting BE column to ${checkInCol} (S-V) and KI column to ${checkOutCol} (W-Z)`);
+                    
+                    // Worked time is typically in a dedicated column, but if not found, set a default
+                    if (workedTimeCol < 0) {
+                        // Set to a column after checkOut columns
+                        workedTimeCol = checkOutCol + 4; 
+                        console.log(`Setting worked time column to ${workedTimeCol}`);
+                    }
+                }
+                
                 // Process rows of data for this person
                 const sectionRecords = [];
                 
@@ -497,6 +526,96 @@ class ExcelParser {
                         continue;
                     }
                     
+                    // Extract check-in and check-out times from their respective column ranges
+                    let checkInTime = '';
+                    let checkOutTime = '';
+                    let workedTime = '';
+                    
+                    // First, get the worked time from its dedicated column
+                    if (workedTimeCol >= 0 && row[workedTimeCol]) {
+                        workedTime = String(row[workedTimeCol]).trim();
+                    }
+                    
+                    // Clear debug log for this row
+                    console.log(`Row ${dataStartRow} raw data:`, 
+                        checkInCol >= 0 && checkInCol < row.length ? `BE columns (${checkInCol}-${checkInCol+3}): ${row.slice(checkInCol, checkInCol+4)}` : 'BE cols not found',
+                        checkOutCol >= 0 && checkOutCol < row.length ? `KI columns (${checkOutCol}-${checkOutCol+3}): ${row.slice(checkOutCol, checkOutCol+4)}` : 'KI cols not found',
+                        workedTimeCol >= 0 && workedTimeCol < row.length ? `Worked time col (${workedTimeCol}): ${row[workedTimeCol]}` : 'Worked time col not found'
+                    );
+                    
+                    // First, scan for values ending with BE/KI across all relevant columns
+                    // Check both the expected BE and KI column ranges for proper values
+                    let beFound = false;
+                    let kiFound = false;
+                    
+                    // Function to check if value ends with BE or KI
+                    const endsWith = (val, suffix) => {
+                        if (!val) return false;
+                        return String(val).trim().toLowerCase().endsWith(suffix.toLowerCase());
+                    };
+                    
+                    // Check all potential columns for BE/KI values
+                    for (let j = 0; j < row.length; j++) {
+                        if (!row[j]) continue;
+                        
+                        const cellValue = String(row[j]).trim();
+                        
+                        // Assign to check-in if it ends with BE
+                        if (endsWith(cellValue, 'BE') && !beFound) {
+                            checkInTime = cellValue;
+                            beFound = true;
+                            console.log(`Found check-in time with BE at col ${j}: ${checkInTime}`);
+                        }
+                        
+                        // Assign to check-out if it ends with KI
+                        if (endsWith(cellValue, 'KI') && !kiFound) {
+                            checkOutTime = cellValue;
+                            kiFound = true;
+                            console.log(`Found check-out time with KI at col ${j}: ${checkOutTime}`);
+                        }
+                    }
+                    
+                    // If we didn't find values with BE/KI postfixes, fall back to column positions
+                    if (!beFound && checkInCol >= 0) {
+                        // Try to find the first non-empty cell in the check-in columns
+                        for (let j = 0; j < 4; j++) {
+                            const colIndex = checkInCol + j;
+                            if (colIndex < row.length && row[colIndex]) {
+                                checkInTime = row[colIndex];
+                                console.log(`Fallback: Found check-in time at col ${colIndex}: ${checkInTime}`);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!kiFound && checkOutCol >= 0) {
+                        // Try to find the first non-empty cell in the check-out columns
+                        for (let j = 0; j < 4; j++) {
+                            const colIndex = checkOutCol + j;
+                            if (colIndex < row.length && row[colIndex]) {
+                                checkOutTime = row[colIndex];
+                                console.log(`Fallback: Found check-out time at col ${colIndex}: ${checkOutTime}`);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Debug log for what we found
+                    console.log(`Before cleanup - check-in: ${checkInTime}, check-out: ${checkOutTime}`);
+                    
+                    // Clean up the check-in and check-out times (remove BE/KI postfixes)
+                    if (checkInTime) {
+                        // Remove any "BE" postfix from check-in time
+                        checkInTime = String(checkInTime).trim().replace(/\s*BE\s*$/i, '');
+                    }
+                    
+                    if (checkOutTime) {
+                        // Remove any "KI" postfix from check-out time
+                        checkOutTime = String(checkOutTime).trim().replace(/\s*KI\s*$/i, '');
+                    }
+                    
+                    console.log(`After cleanup - check-in: ${checkInTime}, check-out: ${checkOutTime}`);
+                    
                     // Create the record with the data from this row
                     const record = {
                         name: employeeInfo.name,
@@ -505,9 +624,9 @@ class ExcelParser {
                         date: dateCell,
                         planedshift: planedCol >= 0 ? (row[planedCol] || '') : '',
                         actual: actualCol >= 0 ? (row[actualCol] || '') : '',
-                        check_in: checkInCol >= 0 ? (row[checkInCol] || '') : '',
-                        check_out: checkOutCol >= 0 ? (row[checkOutCol] || '') : '',
-                        workedTime: workedTimeCol >= 0 ? (row[workedTimeCol] || '') : ''
+                        check_in: checkInTime || '',
+                        check_out: checkOutTime || '',
+                        workedTime: workedTime || ''
                     };
                     
                     // Format date if it's a Date object
