@@ -436,13 +436,180 @@ class ExcelPreview {
     }
 }
 
+/**
+ * Create a preview of SysWeb data with multiple people sections
+ * @param {Array} parsedData - Array of objects with person records
+ * @returns {HTMLElement} Preview container element
+ */
+function createSysWebPreview(parsedData) {
+    const container = document.createElement('div');
+    container.className = 'sysweb-preview-container';
+    
+    if (!parsedData || parsedData.length === 0) {
+        const noData = document.createElement('p');
+        noData.textContent = 'No data found in the selected file.';
+        container.appendChild(noData);
+        return container;
+    }
+    
+    // Group records by person name
+    const personGroups = {};
+    parsedData.forEach(record => {
+        if (!record.name) return;
+        
+        if (!personGroups[record.name]) {
+            personGroups[record.name] = [];
+        }
+        personGroups[record.name].push(record);
+    });
+    
+    // Create accordion for each person
+    Object.keys(personGroups).forEach(personName => {
+        const personRecords = personGroups[personName];
+        const personSection = document.createElement('div');
+        personSection.className = 'person-section';
+        
+        // Create header with toggle functionality
+        const header = document.createElement('div');
+        header.className = 'person-header';
+        header.innerHTML = `
+            <div class="toggle-icon">➕</div>
+            <h3>${personName}</h3>
+            <div class="person-meta">
+                <span>${personRecords[0].jobtitle || 'No job title'}</span>
+                <span>${personRecords[0].costcenter || 'No cost center'}</span>
+                <span>Records: ${personRecords.length}</span>
+            </div>
+        `;
+        
+        header.addEventListener('click', () => {
+            // Toggle visibility
+            if (recordsContainer.style.display === 'none') {
+                recordsContainer.style.display = 'block';
+                header.querySelector('.toggle-icon').textContent = '➖';
+            } else {
+                recordsContainer.style.display = 'none';
+                header.querySelector('.toggle-icon').textContent = '➕';
+            }
+        });
+        
+        personSection.appendChild(header);
+        
+        // Create table for records
+        const recordsContainer = document.createElement('div');
+        recordsContainer.className = 'records-container';
+        recordsContainer.style.display = 'none'; // Collapsed by default
+        
+        const table = document.createElement('table');
+        table.className = 'records-table';
+        
+        // Create header row
+        const thead = document.createElement('thead');
+        thead.innerHTML = `
+            <tr>
+                <th>Date</th>
+                <th>Planned Shift</th>
+                <th>Actual</th>
+                <th>Check In</th>
+                <th>Check Out</th>
+                <th>Worked Time</th>
+            </tr>
+        `;
+        table.appendChild(thead);
+        
+        // Create body rows
+        const tbody = document.createElement('tbody');
+        personRecords.forEach(record => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${record.date || ''}</td>
+                <td>${record.planedshift || ''}</td>
+                <td>${record.actual || ''}</td>
+                <td>${record.check_in || ''}</td>
+                <td>${record.check_out || ''}</td>
+                <td>${record.workedTime || ''}</td>
+            `;
+            tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+        
+        recordsContainer.appendChild(table);
+        personSection.appendChild(recordsContainer);
+        container.appendChild(personSection);
+    });
+    
+    // Add summary
+    const summary = document.createElement('div');
+    summary.className = 'preview-summary';
+    summary.innerHTML = `
+        <p>Found ${parsedData.length} records from ${Object.keys(personGroups).length} people.</p>
+    `;
+    container.appendChild(summary);
+    
+    return container;
+}
+
+/**
+ * Display preview of SysWeb data
+ * @param {Array} parsedData - Array of parsed records
+ * @param {HTMLElement} targetElement - Container to display preview
+ */
+function displaySysWebPreview(parsedData, targetElement) {
+    if (!targetElement) return;
+    
+    // Clear previous content
+    targetElement.innerHTML = '';
+    
+    if (!parsedData || parsedData.length === 0) {
+        targetElement.innerHTML = '<p>No data found in the selected file.</p>';
+        return;
+    }
+    
+    // Create and append the preview
+    const preview = createSysWebPreview(parsedData);
+    targetElement.appendChild(preview);
+    
+    // Add validation controls
+    const controls = document.createElement('div');
+    controls.className = 'preview-controls';
+    controls.innerHTML = `
+        <div class="validation-status">Data preview ready for import.</div>
+        <div class="button-container">
+            <button id="confirm-import-btn" class="button primary">Confirm Import</button>
+            <button id="cancel-import-btn" class="button secondary">Cancel</button>
+        </div>
+    `;
+    
+    // Add event listeners to controls
+    controls.querySelector('#confirm-import-btn').addEventListener('click', () => {
+        console.log('Confirm import button clicked');
+        // Trigger the actual import
+        document.dispatchEvent(new CustomEvent('sysweb-import-confirmed', { 
+            detail: { data: parsedData }
+        }));
+    });
+    
+    controls.querySelector('#cancel-import-btn').addEventListener('click', () => {
+        console.log('Cancel import button clicked');
+        targetElement.innerHTML = '<p>Import cancelled.</p>';
+    });
+    
+    targetElement.appendChild(controls);
+}
+
 // Export module for both Node.js and browser
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ExcelPreview;
+    module.exports = {
+        ExcelPreview,
+        createSysWebPreview,
+        displaySysWebPreview
+    };
 } 
 
 // Make it global for browser
 if (typeof window !== 'undefined') {
     window.ExcelPreview = ExcelPreview;
+    window.createSysWebPreview = createSysWebPreview;
+    window.displaySysWebPreview = displaySysWebPreview;
     console.log('ExcelPreview exposed to window object');
 } 

@@ -3,6 +3,9 @@ const { ipcRenderer } = require('electron');
 
 console.log('Basic renderer started');
 
+// Add this global flag at the top of the file, outside any functions
+let importInitialized = false;
+
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded - initializing basic renderer');
@@ -62,8 +65,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Initialize import functionality
-    initializeImport();
+    // Initialize import functionality ONLY ONCE
+    if (!importInitialized) {
+        initializeImport();
+        importInitialized = true;
+    }
 });
 
 // Add splash effect to dashboard
@@ -354,123 +360,111 @@ async function loadDashboardCounts() {
     }
 }
 
-// Initialize Excel Preview component when the Import tab is active
-document.querySelector('.tab-btn[data-tab="import-tab"]').addEventListener('click', () => {
-    console.log('Import tab activated');
-    const importSection = document.getElementById('import-tab');
-    
-    // Simple implementation to avoid errors
-    if (importSection) {
-        // Clear any previous error messages
-        const statusElement = document.getElementById('import-status');
-        if (statusElement) {
-            statusElement.textContent = '';
-            statusElement.className = '';
-        }
-        
-        // Set up file selection button
-        const selectFileBtn = document.getElementById('select-file-btn');
-        if (selectFileBtn) {
-            selectFileBtn.addEventListener('click', async () => {
-                try {
-                    const filePath = await ipcRenderer.invoke('select-file');
-                    const selectedFilePathElement = document.getElementById('selected-file-path');
-                    if (selectedFilePathElement && filePath) {
-                        selectedFilePathElement.textContent = filePath;
-                        // Enable import button
-                        const importDataBtn = document.getElementById('import-data-btn');
-                        if (importDataBtn) {
-                            importDataBtn.disabled = false;
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error selecting file:', error);
-                    if (statusElement) {
-                        statusElement.textContent = `Error selecting file: ${error.message}`;
-                        statusElement.className = 'error-message';
-                    }
-                }
-            });
-        }
-        
-        // Set up import button
-        const importDataBtn = document.getElementById('import-data-btn');
-        if (importDataBtn) {
-            importDataBtn.addEventListener('click', () => {
-                const selectedFilePathElement = document.getElementById('selected-file-path');
-                const filePath = selectedFilePathElement ? selectedFilePathElement.textContent : '';
-                
-                if (!filePath) {
-                    if (statusElement) {
-                        statusElement.textContent = 'Please select a file first';
-                        statusElement.className = 'error-message';
-                    }
-                    return;
-                }
-                
-                if (statusElement) {
-                    statusElement.textContent = 'Import functionality coming soon...';
-                    statusElement.className = 'info-message';
-                }
-            });
-        }
-    }
-});
+// Initialize Excel Preview component when the Import tab is active - but don't add event listeners
+const importTabBtn = document.querySelector('.tab-btn[data-tab="import-tab"]');
+if (importTabBtn) {
+    importTabBtn.addEventListener('click', () => {
+        console.log('Import tab activated');
+        // Don't add any button event handlers here - they're now in initializeImport()
+    });
+}
 
+// Import functionality
 function initializeImport() {
     console.log('Initializing import functionality');
     
-    const selectFileBtn = document.getElementById('select-file-btn');
+    // Get DOM elements
+    let selectFileBtn = document.getElementById('select-file-btn');
     const selectedFilePath = document.getElementById('selected-file-path');
-    const importDataBtn = document.getElementById('import-data-btn');
-    const clearImportBtn = document.getElementById('clear-import-btn');
+    let importDataBtn = document.getElementById('import-data-btn');
+    let clearImportBtn = document.getElementById('clear-import-btn');
     const importStatus = document.getElementById('import-status');
     const importTypeSelector = document.getElementById('import-type-selector');
-    const importedRecordsContainer = document.getElementById('imported-records');
+    const importedRecords = document.getElementById('imported-records');
+    const importLoading = document.getElementById('import-loading');
     
-    let excelFilePath = '';
-    let currentImportType = 'worktime'; // Default to worktime
+    let excelFilePath = null;
+    let currentImportType = 'autodetect';
+    let previewData = null;
     
-    console.log('Looking for import elements:', { 
-        selectFileBtn: !!selectFileBtn, 
-        selectedFilePath: !!selectedFilePath,
-        importDataBtn: !!importDataBtn 
-    });
+    // Load preview modules
+    const excelPreview = require('./src/excelPreview.js');
+    const { displaySysWebPreview } = excelPreview;
     
-    // Event listeners
-    if (selectFileBtn) {
-        selectFileBtn.addEventListener('click', async () => {
-            console.log('Select file button clicked');
-            try {
-                const { ipcRenderer } = require('electron');
-                const result = await ipcRenderer.invoke('select-file');
-                console.log('File selection result:', result);
-                
-                if (result && result.filePaths && result.filePaths.length > 0) {
-                    excelFilePath = result.filePaths[0];
-                    console.log('Selected file path:', excelFilePath);
-                    selectedFilePath.textContent = excelFilePath;
-                    importDataBtn.disabled = false;
-                    
-                    showImportStatus('File selected successfully', 'info');
-                } else {
-                    console.log('No file selected or selection canceled');
-                }
-            } catch (error) {
-                console.error('Error selecting file:', error);
-                showImportStatus(`Error selecting file: ${error.message}`, 'error');
+    if (importTypeSelector) {
+        importTypeSelector.addEventListener('change', (event) => {
+            currentImportType = event.target.value;
+            console.log(`Import type changed to: ${currentImportType}`);
+            
+            // Reset preview data when import type changes
+            previewData = null;
+            
+            // If a file was already selected, enable the import button
+            if (excelFilePath) {
+                importDataBtn.disabled = false;
             }
         });
     }
     
-    if (importTypeSelector) {
-        importTypeSelector.addEventListener('change', () => {
-            currentImportType = importTypeSelector.value;
-            console.log(`Import type changed to: ${currentImportType}`);
+    // File selection - remove existing listeners first
+    if (selectFileBtn) {
+        // Remove existing listeners to prevent duplicates
+        const newSelectBtn = selectFileBtn.cloneNode(true);
+        selectFileBtn.parentNode.replaceChild(newSelectBtn, selectFileBtn);
+        selectFileBtn = newSelectBtn;
+        
+        selectFileBtn.addEventListener('click', async () => {
+            try {
+                const { ipcRenderer } = require('electron');
+                const result = await ipcRenderer.invoke('open-file-dialog', {
+                    title: 'Select Excel File',
+                    filters: [
+                        { name: 'Excel Files', extensions: ['xlsx', 'xls'] }
+                    ]
+                });
+                
+                if (result && result.filePaths && result.filePaths.length > 0) {
+                    excelFilePath = result.filePaths[0];
+                    selectedFilePath.textContent = excelFilePath;
+                    importDataBtn.disabled = false;
+                    
+                    // Reset preview data when new file is selected
+                    previewData = null;
+                    
+                    console.log('Selected file:', excelFilePath);
+                    showImportStatus('File selected. Click "Process" to import data.', 'info');
+                }
+            } catch (error) {
+                console.error('Error selecting file:', error);
+                showImportStatus('Error selecting file: ' + error.message, 'error');
+            }
         });
     }
     
+    // Clear import - remove existing listeners first
+    if (clearImportBtn) {
+        // Remove existing listeners to prevent duplicates
+        const newClearBtn = clearImportBtn.cloneNode(true);
+        clearImportBtn.parentNode.replaceChild(newClearBtn, clearImportBtn);
+        clearImportBtn = newClearBtn;
+        
+        clearImportBtn.addEventListener('click', () => {
+            excelFilePath = null;
+            selectedFilePath.textContent = 'No file selected';
+            importDataBtn.disabled = true;
+            importedRecords.innerHTML = '<p>Import data to see records.</p>';
+            previewData = null;
+            showImportStatus('', '');
+        });
+    }
+    
+    // Process data button - remove existing listeners first
     if (importDataBtn) {
+        // Remove existing listeners to prevent duplicates
+        const newImportBtn = importDataBtn.cloneNode(true);
+        importDataBtn.parentNode.replaceChild(newImportBtn, importDataBtn);
+        importDataBtn = newImportBtn;
+        
         importDataBtn.addEventListener('click', async () => {
             console.log('Process imported data button clicked');
             
@@ -479,56 +473,122 @@ function initializeImport() {
                 return;
             }
             
+            // Show loading indicator
+            if (importLoading) importLoading.style.display = 'flex';
+            
             try {
                 const { ipcRenderer } = require('electron');
-                showImportStatus(`Processing ${currentImportType} data...`, 'info');
+                showImportStatus(`Parsing ${currentImportType} data...`, 'info');
                 
+                // First, just parse the data without importing
                 let result;
+                
+                // Parse based on the import type
                 switch (currentImportType) {
                     case 'worktime':
-                        console.log('Calling import-sysweb-excel with path:', excelFilePath);
-                        result = await ipcRenderer.invoke('import-sysweb-excel', excelFilePath);
+                        // For SysWeb/worktime, we need to preview first
+                        console.log('Parsing SysWeb data for preview');
+                        result = await ipcRenderer.invoke('parse-sysweb-excel', excelFilePath);
                         break;
                     case 'alerts':
-                        result = await ipcRenderer.invoke('import-alerts-excel', excelFilePath);
-                        break;
                     case 'ifleet':
-                        result = await ipcRenderer.invoke('import-ifleet-excel', excelFilePath);
-                        break;
                     case 'autodetect':
                     default:
-                        result = await ipcRenderer.invoke('import-autodetect-excel', excelFilePath);
+                        // For other types, proceed directly to import
+                        console.log(`Importing ${currentImportType} data directly`);
+                        result = await performDirectImport(excelFilePath, currentImportType);
                         break;
                 }
                 
-                console.log('Import result:', result);
+                if (importLoading) importLoading.style.display = 'none';
+                
+                console.log('Parse result:', result);
                 
                 if (result && result.success) {
-                    showImportStatus(result.message, 'success');
-                    
-                    // Display the data
-                    displayImportedData(currentImportType);
+                    // For SysWeb/worktime, show preview before final import
+                    if (currentImportType === 'worktime' && result.data) {
+                        previewData = result.data;
+                        showImportStatus('Data parsed successfully. Please review and confirm import.', 'success');
+                        
+                        // Show preview
+                        displaySysWebPreview(previewData, importedRecords);
+                    } else {
+                        // For other types, we already performed the import
+                        showImportStatus(result.message, 'success');
+                        displayImportedData(currentImportType);
+                    }
                 } else {
-                    showImportStatus(`Import failed: ${result ? result.message : 'Unknown error'}`, 'error');
+                    showImportStatus(`Parse failed: ${result ? result.message : 'Unknown error'}`, 'error');
                 }
             } catch (error) {
-                console.error('Error importing data:', error);
-                showImportStatus(`Import error: ${error.message}`, 'error');
+                console.error('Error processing data:', error);
+                showImportStatus(`Error processing data: ${error.message}`, 'error');
+                if (importLoading) importLoading.style.display = 'none';
             }
         });
     }
     
-    if (clearImportBtn) {
-        clearImportBtn.addEventListener('click', () => {
-            excelFilePath = '';
-            selectedFilePath.textContent = 'No file selected';
-            importDataBtn.disabled = true;
-            importedRecordsContainer.innerHTML = '<p>Import data to see records.</p>';
-            showImportStatus('', '');
-        });
+    // Listen for preview confirmation events from excelPreview.js
+    document.addEventListener('sysweb-import-confirmed', async (event) => {
+        if (!event.detail || !event.detail.data) {
+            showImportStatus('No data available for import', 'error');
+            return;
+        }
+        
+        // Show loading indicator
+        if (importLoading) importLoading.style.display = 'flex';
+        
+        try {
+            const { ipcRenderer } = require('electron');
+            showImportStatus('Importing data to database...', 'info');
+            
+            // Perform the actual import
+            const result = await ipcRenderer.invoke('import-sysweb-data', event.detail.data);
+            
+            if (importLoading) importLoading.style.display = 'none';
+            
+            if (result && result.success) {
+                showImportStatus(result.message, 'success');
+                // Refresh the display with data from database
+                displayImportedData('worktime');
+                
+                // Hide the preview controls since we've completed the import
+                const confirmControls = importedRecords.querySelector('.preview-controls');
+                if (confirmControls) {
+                    confirmControls.style.display = 'none';
+                }
+            } else {
+                showImportStatus(`Import failed: ${result ? result.message : 'Unknown error'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error importing confirmed data:', error);
+            showImportStatus(`Error importing data: ${error.message}`, 'error');
+            if (importLoading) importLoading.style.display = 'none';
+        }
+    });
+    
+    // Helper function for direct import (non-previewed types)
+    async function performDirectImport(filePath, importType) {
+        const { ipcRenderer } = require('electron');
+        let result;
+        
+        switch (importType) {
+            case 'alerts':
+                result = await ipcRenderer.invoke('import-alerts-excel', filePath);
+                break;
+            case 'ifleet':
+                result = await ipcRenderer.invoke('import-ifleet-excel', filePath);
+                break;
+            case 'autodetect':
+            default:
+                result = await ipcRenderer.invoke('import-autodetect-excel', filePath);
+                break;
+        }
+        
+        return result;
     }
     
-    // Function to show import status messages
+    // Helper function to show import status
     function showImportStatus(message, type) {
         if (!importStatus) return;
         
@@ -536,87 +596,65 @@ function initializeImport() {
         importStatus.className = 'status-message';
         
         if (type) {
-            importStatus.classList.add(type);
+            importStatus.classList.add(`status-${type}`);
         }
     }
     
-    // Function to display imported data based on type
-    async function displayImportedData(type) {
-        if (!importedRecordsContainer) return;
+    // Helper function to display imported data
+    function displayImportedData(dataType) {
+        if (!importedRecords) return;
         
-        const { ipcRenderer } = require('electron');
+        // Set a loading message
+        importedRecords.innerHTML = '<p>Loading imported data...</p>';
+        
+        // Different display logic based on data type
+        switch (dataType) {
+            case 'worktime':
+                displaySysWebImportedData();
+                break;
+            case 'alerts':
+                displayAlertsImportedData();
+                break;
+            case 'ifleet':
+                displayIFleetImportedData();
+                break;
+            default:
+                importedRecords.innerHTML = '<p>No data available to display.</p>';
+                break;
+        }
+    }
+    
+    // Function to display SysWeb data from the database
+    async function displaySysWebImportedData() {
         try {
-            let data;
+            const { ipcRenderer } = require('electron');
+            const data = await ipcRenderer.invoke('get-sysweb-data');
             
-            switch (type) {
-                case 'worktime':
-                    data = await ipcRenderer.invoke('get-sysweb-data');
-                    displayWorktimeData(data);
-                    break;
-                case 'alerts':
-                    data = await ipcRenderer.invoke('get-alerts-data');
-                    importedRecordsContainer.innerHTML = '<p>Alerts data imported. Functionality coming soon.</p>';
-                    break;
-                case 'ifleet':
-                    data = await ipcRenderer.invoke('get-ifleet-data');
-                    importedRecordsContainer.innerHTML = '<p>iFleet data imported. Functionality coming soon.</p>';
-                    break;
-                default:
-                    data = await ipcRenderer.invoke('get-latest-import-data');
-                    if (data && data.type === 'worktime') {
-                        displayWorktimeData(data.records);
-                    } else {
-                        importedRecordsContainer.innerHTML = '<p>Data imported but no specific handler available.</p>';
-                    }
-            }
-        } catch (error) {
-            console.error('Error displaying imported data:', error);
-            importedRecordsContainer.innerHTML = `<p>Error displaying data: ${error.message}</p>`;
-        }
-    }
-    
-    // Function to display worktime data specifically
-    function displayWorktimeData(data) {
-        if (!data || data.length === 0) {
-            importedRecordsContainer.innerHTML = '<p>No worktime records found.</p>';
-            return;
-        }
-        
-        // Group records by person
-        const peopleGroups = {};
-        
-        data.forEach(record => {
-            if (!record.name) return;
-            
-            if (!peopleGroups[record.name]) {
-                peopleGroups[record.name] = {
-                    name: record.name,
-                    jobtitle: record.jobtitle,
-                    costcenter: record.costcenter,
-                    records: []
-                };
+            if (!data || data.length === 0) {
+                importedRecords.innerHTML = '<p>No SysWeb data found in the database.</p>';
+                return;
             }
             
-            peopleGroups[record.name].records.push(record);
-        });
-        
-        // Build HTML for each person
-        let html = '';
-        
-        Object.values(peopleGroups).forEach(person => {
-            html += `
-                <div class="person-section">
-                    <div class="person-header">
-                        <h3>${person.name || 'Unknown Person'}</h3>
-                        <div class="person-details">
-                            <span><strong>Job Title:</strong> ${person.jobtitle || 'N/A'}</span>
-                            <span><strong>Cost Center:</strong> ${person.costcenter || 'N/A'}</span>
-                        </div>
-                    </div>
-                    
+            // Group by name for display
+            const groupedData = {};
+            data.forEach(record => {
+                if (!groupedData[record.name]) {
+                    groupedData[record.name] = [];
+                }
+                groupedData[record.name].push(record);
+            });
+            
+            let html = `
+                <div class="table-summary">
+                    <p>Showing ${data.length} records for ${Object.keys(groupedData).length} people.</p>
+                </div>
+                <div class="table-container">
                     <table class="data-table">
                         <thead>
                             <tr>
+                                <th>Name</th>
+                                <th>Job Title</th>
+                                <th>Cost Center</th>
                                 <th>Date</th>
                                 <th>Planned Shift</th>
                                 <th>Actual</th>
@@ -628,15 +666,12 @@ function initializeImport() {
                         <tbody>
             `;
             
-            // Sort records by date
-            person.records.sort((a, b) => {
-                return a.date.localeCompare(b.date);
-            });
-            
-            // Add rows for each record
-            person.records.forEach(record => {
+            data.forEach(record => {
                 html += `
                     <tr>
+                        <td>${record.name || ''}</td>
+                        <td>${record.jobtitle || ''}</td>
+                        <td>${record.costcenter || ''}</td>
                         <td>${record.date || ''}</td>
                         <td>${record.planedshift || ''}</td>
                         <td>${record.actual || ''}</td>
@@ -651,10 +686,22 @@ function initializeImport() {
                         </tbody>
                     </table>
                 </div>
-                <hr>
             `;
-        });
-        
-        importedRecordsContainer.innerHTML = html;
+            
+            importedRecords.innerHTML = html;
+        } catch (error) {
+            console.error('Error displaying SysWeb data:', error);
+            importedRecords.innerHTML = `<p class="error">Error displaying data: ${error.message}</p>`;
+        }
+    }
+    
+    // Function to display Alerts data from the database
+    async function displayAlertsImportedData() {
+        importedRecords.innerHTML = '<p>Alerts data display not implemented yet.</p>';
+    }
+    
+    // Function to display iFleet data from the database
+    async function displayIFleetImportedData() {
+        importedRecords.innerHTML = '<p>iFleet data display not implemented yet.</p>';
     }
 } 

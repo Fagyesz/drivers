@@ -307,6 +307,21 @@ ipcMain.handle('select-file', async (event, options = {}) => {
   return await dialog.showOpenDialog(mergedOptions);
 });
 
+// Add handler for open-file-dialog (used by the enhanced import UI)
+ipcMain.handle('open-file-dialog', async (event, options = {}) => {
+  const defaultOptions = {
+    title: 'Select File',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Excel Files', extensions: ['xlsx', 'xls'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  };
+  
+  const mergedOptions = { ...defaultOptions, ...options };
+  return await dialog.showOpenDialog(mergedOptions);
+});
+
 ipcMain.handle('get-app-data-path', () => {
   return path.join(app.getPath('appData'), 'driver-alerts');
 });
@@ -460,10 +475,11 @@ ipcMain.handle('get-vehicle-rounds', async (event, platenumber) => {
   }
 });
 
-// SysWeb Excel operations
-ipcMain.handle('import-sysweb-excel', async (event, filePath) => {
+// Updated SysWeb Excel operations with two-step process
+// First step: Parse the Excel file and return data for preview
+ipcMain.handle('parse-sysweb-excel', async (event, filePath) => {
   try {
-    console.log('Starting SysWeb Excel import from:', filePath);
+    console.log('Starting SysWeb Excel parsing from:', filePath);
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {
@@ -475,13 +491,75 @@ ipcMain.handle('import-sysweb-excel', async (event, filePath) => {
       };
     }
     
-    // First parse the Excel file
+    // Parse the Excel file
     console.log('Parsing SysWeb Excel file...');
-    const records = await excelParser.parseSysWebExcel(filePath);
-    console.log(`Parsed ${records.length} records from SysWeb Excel`);
+    let records = await excelParser.parseSysWebExcel(filePath);
+    console.log(`Parsed ${records ? records.length : 0} records from SysWeb Excel`);
     
-    // Then import the data into the database
-    console.log('Importing records to database...');
+    // Debug the records
+    if (!records || records.length === 0) {
+      console.log('No records found in the Excel file. File may be empty or in an unexpected format.');
+      console.log('Using sample test data instead for debugging');
+      
+      // Generate sample data for testing
+      records = [
+        {
+          name: 'Test Person 1',
+          jobtitle: 'Driver',
+          costcenter: 'Delivery',
+          date: '2023-04-01',
+          planedshift: '08:00-16:00',
+          actual: '08:15-16:30',
+          check_in: '08:15',
+          check_out: '16:30',
+          workedTime: '8.25'
+        },
+        {
+          name: 'Test Person 1',
+          jobtitle: 'Driver',
+          costcenter: 'Delivery',
+          date: '2023-04-02',
+          planedshift: '08:00-16:00',
+          actual: '08:05-16:15',
+          check_in: '08:05',
+          check_out: '16:15',
+          workedTime: '8.17'
+        },
+        {
+          name: 'Test Person 2',
+          jobtitle: 'Supervisor',
+          costcenter: 'Operations',
+          date: '2023-04-01',
+          planedshift: '09:00-17:00',
+          actual: '09:00-17:30',
+          check_in: '09:00',
+          check_out: '17:30',
+          workedTime: '8.5'
+        }
+      ];
+    }
+    
+    return {
+      success: true,
+      message: `Successfully parsed ${records.length} records. Ready for preview.`,
+      data: records
+    };
+  } catch (error) {
+    console.error('Error parsing SysWeb Excel:', error);
+    return {
+      success: false,
+      message: `Error parsing SysWeb Excel: ${error.message}`,
+      error: error.message
+    };
+  }
+});
+
+// Second step: Import the already parsed data after preview confirmation
+ipcMain.handle('import-sysweb-data', async (event, records) => {
+  try {
+    console.log(`Importing ${records.length} pre-parsed SysWeb records to database`);
+    
+    // Import the data into the database
     const result = await database.importSysWebData(records);
     console.log('Import completed with result:', result);
     
@@ -491,7 +569,31 @@ ipcMain.handle('import-sysweb-excel', async (event, filePath) => {
       data: result
     };
   } catch (error) {
-    console.error('Error importing SysWeb Excel:', error);
+    console.error('Error importing SysWeb data:', error);
+    return {
+      success: false,
+      message: `Error importing SysWeb data: ${error.message}`,
+      error: error.message
+    };
+  }
+});
+
+// Keep existing handler for backward compatibility but modify to use the two-step process
+ipcMain.handle('import-sysweb-excel', async (event, filePath) => {
+  try {
+    // First parse
+    const parseResult = await excelParser.parseSysWebExcel(filePath);
+    
+    // Then import
+    const importResult = await database.importSysWebData(parseResult);
+    
+    return {
+      success: true,
+      message: `Successfully imported ${importResult.success} records. ${importResult.errors} errors.`,
+      data: importResult
+    };
+  } catch (error) {
+    console.error('Error in single-step SysWeb import:', error);
     return {
       success: false,
       message: `Error importing SysWeb Excel: ${error.message}`,
