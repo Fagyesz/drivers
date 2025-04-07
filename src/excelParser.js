@@ -2,6 +2,7 @@ const XLSX = require('xlsx');
 const ExcelJS = require('exceljs');
 const moment = require('moment');
 const fs = require('fs');
+const logger = require('./logger');
 
 /**
  * Excel Parser class for handling complex Excel files with merged cells
@@ -45,7 +46,7 @@ class ExcelParser {
             
             return results;
         } catch (error) {
-            console.error('Error parsing Excel file:', error);
+            logger.error('Error parsing Excel file', { error: error.message });
             throw new Error(`Failed to parse Excel file: ${error.message}`);
         }
     }
@@ -210,7 +211,7 @@ class ExcelParser {
             
             return workbook.worksheets.map(sheet => sheet.name);
         } catch (error) {
-            console.error('Error getting sheet names:', error);
+            logger.error('Error getting sheet names', { error: error.message });
             throw new Error(`Failed to get sheet names: ${error.message}`);
         }
     }
@@ -222,35 +223,35 @@ class ExcelParser {
      */
     async parseSysWebExcel(filePath) {
         try {
-            console.log('Starting SysWeb Excel parsing from:', filePath);
+            logger.info('Starting SysWeb Excel parsing from:', filePath);
             
             // Verify file exists
             if (!fs.existsSync(filePath)) {
-                console.error(`File does not exist: ${filePath}`);
+                logger.error(`File does not exist: ${filePath}`);
                 throw new Error(`File not found: ${filePath}`);
             }
             
             const workbook = new ExcelJS.Workbook();
-            console.log('Reading Excel file...');
+            logger.info('Reading Excel file...');
             await workbook.xlsx.readFile(filePath);
-            console.log('Excel file loaded successfully');
+            logger.info('Excel file loaded successfully');
             
             // Assume we're working with the first worksheet
             const worksheet = workbook.worksheets[0];
-            console.log(`Working with worksheet: ${worksheet.name}`);
+            logger.info(`Working with worksheet: ${worksheet.name}`);
             
             // First resolve all merged cells into a 2D array
-            console.log('Resolving merged cells...');
+            logger.info('Resolving merged cells...');
             const resolvedData = this.resolveMergedCells(worksheet);
-            console.log(`Resolved data has ${resolvedData.length} rows`);
+            logger.info(`Resolved data has ${resolvedData.length} rows`);
             
             // Find all person sections in the file
-            console.log('Searching for person sections...');
+            logger.info('Searching for person sections...');
             const sectionIndices = [];
             
             // Detailed logging for the first few rows to help with debugging
             for (let i = 0; i < Math.min(20, resolvedData.length); i++) {
-                console.log(`Debug Row ${i}:`, JSON.stringify(resolvedData[i]));
+                logger.info(`Debug Row ${i}:`, JSON.stringify(resolvedData[i]));
             }
             
             // Look for "Jelentési ív" which signals the start of a person section
@@ -262,7 +263,7 @@ class ExcelParser {
                     const cell = row[j];
                     if (cell && String(cell).trim().includes('Jelentési ív')) {
                         sectionIndices.push({ startIndex: i, nameRow: i + 1 });
-                        console.log(`Found person section start at row ${i}`);
+                        logger.info(`Found person section start at row ${i}`);
                         break;
                     }
                 }
@@ -270,7 +271,7 @@ class ExcelParser {
             
             // If no sections found, try a more flexible search
             if (sectionIndices.length === 0) {
-                console.log("No sections found with 'Jelentési ív'. Trying more flexible search...");
+                logger.info("No sections found with 'Jelentési ív'. Trying more flexible search...");
                 for (let i = 0; i < resolvedData.length; i++) {
                     const row = resolvedData[i];
                     if (!row) continue;
@@ -280,7 +281,7 @@ class ExcelParser {
                         const cell = row[j];
                         if (cell && String(cell).trim() === 'Név:') {
                             sectionIndices.push({ startIndex: i-2, nameRow: i });
-                            console.log(`Found person section with "Név:" at row ${i}`);
+                            logger.info(`Found person section with "Név:" at row ${i}`);
                             break;
                         }
                     }
@@ -302,7 +303,7 @@ class ExcelParser {
                         const cell = row[k];
                         if (cell && String(cell).trim() === 'Összesen') {
                             endIndex = j;
-                            console.log(`Found section end (Összesen) at row ${j}`);
+                            logger.info(`Found section end (Összesen) at row ${j}`);
                             break;
                         }
                     }
@@ -321,14 +322,14 @@ class ExcelParser {
                 sectionIndices[i].endIndex = endIndex;
             }
             
-            console.log(`Found ${sectionIndices.length} person sections`);
+            logger.info(`Found ${sectionIndices.length} person sections`);
             
             // Process each person section
             const allRecords = [];
             
             for (let sectionIdx = 0; sectionIdx < sectionIndices.length; sectionIdx++) {
                 const section = sectionIndices[sectionIdx];
-                console.log(`Processing person section ${sectionIdx + 1} (rows ${section.startIndex}-${section.endIndex})`);
+                logger.info(`Processing person section ${sectionIdx + 1} (rows ${section.startIndex}-${section.endIndex})`);
                 
                 // Extract data for this section
                 const sectionData = resolvedData.slice(section.startIndex, section.endIndex + 1);
@@ -354,39 +355,39 @@ class ExcelParser {
                         // Name detection (handling different formats)
                         if (cellValue === 'Név:' && j + 1 < row.length) {
                             employeeInfo.name = row[j + 1] || '';
-                            console.log(`Found name: ${employeeInfo.name}`);
+                            logger.info(`Found name: ${employeeInfo.name}`);
                         } 
                         // Check if the name is in the next cell without a label
                         else if (j > 0 && row[j-1] && String(row[j-1]).trim() === 'Név:') {
                             employeeInfo.name = cellValue;
-                            console.log(`Found name: ${employeeInfo.name}`);
+                            logger.info(`Found name: ${employeeInfo.name}`);
                         }
                         
                         // Job title detection (handling different formats)
                         if ((cellValue === 'Munkarend:' || cellValue === 'Egység:') && j + 1 < row.length) {
                             employeeInfo.jobtitle = row[j + 1] || '';
-                            console.log(`Found job title: ${employeeInfo.jobtitle}`);
+                            logger.info(`Found job title: ${employeeInfo.jobtitle}`);
                         } 
                         // Check if job title is in the next cell
                         else if (j > 0 && row[j-1] && (String(row[j-1]).trim() === 'Munkarend:' || String(row[j-1]).trim() === 'Egység:')) {
                             employeeInfo.jobtitle = cellValue;
-                            console.log(`Found job title: ${employeeInfo.jobtitle}`);
+                            logger.info(`Found job title: ${employeeInfo.jobtitle}`);
                         }
                         
                         // Cost center detection (handling different formats)
                         if ((cellValue === 'Költséghely:' || cellValue === 'Állomány:') && j + 1 < row.length) {
                             employeeInfo.costcenter = row[j + 1] || '';
-                            console.log(`Found cost center: ${employeeInfo.costcenter}`);
+                            logger.info(`Found cost center: ${employeeInfo.costcenter}`);
                         }
                         // Check if cost center is in the next cell
                         else if (j > 0 && row[j-1] && (String(row[j-1]).trim() === 'Költséghely:' || String(row[j-1]).trim() === 'Állomány:')) {
                             employeeInfo.costcenter = cellValue;
-                            console.log(`Found cost center: ${employeeInfo.costcenter}`);
+                            logger.info(`Found cost center: ${employeeInfo.costcenter}`);
                         }
                     }
                 }
                 
-                console.log(`Employee info for section ${sectionIdx + 1}:`, employeeInfo);
+                logger.info(`Employee info for section ${sectionIdx + 1}:`, employeeInfo);
                 
                 // Find the data headers row with "Dátum", "Terv", "Tény", etc.
                 let headerRow = -1;
@@ -413,19 +414,19 @@ class ExcelParser {
                             headerRow = i;
                             dateCol = j;
                             foundDatumHeader = true;
-                            console.log(`Found 'dátum' at section row ${i}, col ${j}`);
+                            logger.info(`Found 'dátum' at section row ${i}, col ${j}`);
                         } else if (cellValue === 'terv') {
                             plannedShiftCol = j;
-                            console.log(`Found 'terv' at section row ${i}, col ${j}`);
+                            logger.info(`Found 'terv' at section row ${i}, col ${j}`);
                         } else if (cellValue === 'tény') {
                             actualShiftCol = j;
-                            console.log(`Found 'tény' at section row ${i}, col ${j}`);
+                            logger.info(`Found 'tény' at section row ${i}, col ${j}`);
                         } else if (cellValue === 'ledolg.' || cellValue.includes('ledolg')) {
                             workedTimeCol = j;
-                            console.log(`Found 'ledolg' at section row ${i}, col ${j}`);
+                            logger.info(`Found 'ledolg' at section row ${i}, col ${j}`);
                         } else if (cellValue === 'mozgások' || cellValue.includes('mozgás')) {
                             mozgasokCol = j;
-                            console.log(`Found 'mozgások' at section row ${i}, col ${j}`);
+                            logger.info(`Found 'mozgások' at section row ${i}, col ${j}`);
                         }
                     }
                     
@@ -445,10 +446,10 @@ class ExcelParser {
                                 const cellValue = String(cell).trim().toLowerCase();
                                 if (cellValue === 'be') {
                                     checkInCol = j;
-                                    console.log(`Found 'be' at section row ${i+nextRow}, col ${j}`);
+                                    logger.info(`Found 'be' at section row ${i+nextRow}, col ${j}`);
                                 } else if (cellValue === 'ki') {
                                     checkOutCol = j;
-                                    console.log(`Found 'ki' at section row ${i+nextRow}, col ${j}`);
+                                    logger.info(`Found 'ki' at section row ${i+nextRow}, col ${j}`);
                                 }
                             }
                         }
@@ -461,14 +462,14 @@ class ExcelParser {
                 }
                 
                 if (headerRow < 0 || dateCol < 0) {
-                    console.warn(`Could not find date column in section ${sectionIdx + 1}, skipping`);
+                    logger.warn(`Could not find date column in section ${sectionIdx + 1}, skipping`);
                     continue;
                 }
                 
                 // If we found Mozgások header but not specific BE/KI columns, 
                 // assume standard column positions (S-V for BE, W-Z for KI)
                 if (mozgasokCol >= 0 && (checkInCol < 0 || checkOutCol < 0)) {
-                    console.log('Using fixed columns for BE/KI based on Mozgások header');
+                    logger.log('Using fixed columns for BE/KI based on Mozgások header');
                     
                     // Find the base column index (this would be column S or index 18 in 0-based)
                     // We'll try to find the actual index by looking at the column position of the Mozgások header
@@ -480,13 +481,13 @@ class ExcelParser {
                     // Columns W-Z (indices 22-25) for second set, KI
                     checkOutCol = baseColIndex + 4;
                     
-                    console.log(`Setting BE column to ${checkInCol} (S-V) and KI column to ${checkOutCol} (W-Z)`);
+                    logger.info(`Setting BE column to ${checkInCol} (S-V) and KI column to ${checkOutCol} (W-Z)`);
                     
                     // Worked time is typically in a dedicated column, but if not found, set a default
                     if (workedTimeCol < 0) {
                         // Set to a column after checkOut columns
                         workedTimeCol = checkOutCol + 4; 
-                        console.log(`Setting worked time column to ${workedTimeCol}`);
+                        logger.info(`Setting worked time column to ${workedTimeCol}`);
                     }
                 }
                 
@@ -499,7 +500,7 @@ class ExcelParser {
                 let dataStartRow = headerRow + 1;
 
                 // Add debugging to log where we're starting to read data
-                console.log(`[ExcelParser] Starting to read data from row ${dataStartRow}`);
+                logger.info(`[ExcelParser] Starting to read data from row ${dataStartRow}`);
 
                 // Scan for the row containing the first date
                 for (let i = dataStartRow; i < sectionData.length; i++) {
@@ -508,7 +509,7 @@ class ExcelParser {
                         // Check if this row contains a date format (like 2024.07.01 or just 07.01)
                         if (/^\d{4}\.\d{2}\.\d{2}$|^\d{2}\.\d{2}$/.test(row[dateCol])) {
                             dataStartRow = i;
-                            console.log(`[ExcelParser] Found first date row at ${dataStartRow}: ${row[dateCol]}`);
+                            logger.info(`[ExcelParser] Found first date row at ${dataStartRow}: ${row[dateCol]}`);
                             break;
                         }
                     }
@@ -534,7 +535,7 @@ class ExcelParser {
                     
                     // Skip the total row and any rows after it (signature lines, etc.)
                     if (isTotal) {
-                        console.log(`Found 'Összesen' row at ${dataStartRow}, stopping data collection`);
+                        logger.info(`Found 'Összesen' row at ${dataStartRow}, stopping data collection`);
                         break;
                     }
 
@@ -543,7 +544,7 @@ class ExcelParser {
                     if (rowText.includes('munkahelyi vezető') || 
                         rowText.includes('munkavállaló') || 
                         rowText.includes('aláírás')) {
-                        console.log(`Skipping signature row at ${dataStartRow}`);
+                        logger.info(`Skipping signature row at ${dataStartRow}`);
                         dataStartRow++;
                         continue;
                     }
@@ -551,13 +552,13 @@ class ExcelParser {
                     // Check if we have a date in the date column
                     const dateCell = row[dateCol];
                     if (!dateCell) {
-                        console.log(`No date found at row ${dataStartRow}, skipping`);
+                        logger.info(`No date found at row ${dataStartRow}, skipping`);
                         dataStartRow++;
                         continue;
                     }
                     
                     // Ensure early month days (like 03.01, 03.02) are properly processed
-                    console.log(`Processing date cell: "${dateCell}" at row ${dataStartRow}`);
+                    logger.info(`Processing date cell: "${dateCell}" at row ${dataStartRow}`);
                     
                     // Make sure we handle Hungarian date formats (potentially with periods)
                     let formattedDate = dateCell;
@@ -577,7 +578,7 @@ class ExcelParser {
                                 }
                                 
                                 formattedDate = `${year}-${month}-${day}`;
-                                console.log(`Reformatted date from "${dateCell}" to "${formattedDate}"`);
+                                logger.info(`Reformatted date from "${dateCell}" to "${formattedDate}"`);
                             }
                         }
                     }
@@ -593,7 +594,7 @@ class ExcelParser {
                     }
                     
                     // Clear debug log for this row
-                    console.log(`Row ${dataStartRow} raw data:`, 
+                    logger.info(`Row ${dataStartRow} raw data:`, 
                         checkInCol >= 0 && checkInCol < row.length ? `BE columns (${checkInCol}-${checkInCol+3}): ${row.slice(checkInCol, checkInCol+4)}` : 'BE cols not found',
                         checkOutCol >= 0 && checkOutCol < row.length ? `KI columns (${checkOutCol}-${checkOutCol+3}): ${row.slice(checkOutCol, checkOutCol+4)}` : 'KI cols not found',
                         workedTimeCol >= 0 && workedTimeCol < row.length ? `Worked time col (${workedTimeCol}): ${row[workedTimeCol]}` : 'Worked time col not found'
@@ -620,14 +621,14 @@ class ExcelParser {
                         if (endsWith(cellValue, 'BE') && !beFound) {
                             checkInTime = cellValue;
                             beFound = true;
-                            console.log(`Found check-in time with BE at col ${j}: ${checkInTime}`);
+                            logger.info(`Found check-in time with BE at col ${j}: ${checkInTime}`);
                         }
                         
                         // Assign to check-out if it ends with KI
                         if (endsWith(cellValue, 'KI') && !kiFound) {
                             checkOutTime = cellValue;
                             kiFound = true;
-                            console.log(`Found check-out time with KI at col ${j}: ${checkOutTime}`);
+                            logger.info(`Found check-out time with KI at col ${j}: ${checkOutTime}`);
                         }
                     }
                     
@@ -638,7 +639,7 @@ class ExcelParser {
                             const colIndex = checkInCol + j;
                             if (colIndex < row.length && row[colIndex]) {
                                 checkInTime = row[colIndex];
-                                console.log(`Fallback: Found check-in time at col ${colIndex}: ${checkInTime}`);
+                                logger.info(`Fallback: Found check-in time at col ${colIndex}: ${checkInTime}`);
                                 break;
                             }
                         }
@@ -650,14 +651,14 @@ class ExcelParser {
                             const colIndex = checkOutCol + j;
                             if (colIndex < row.length && row[colIndex]) {
                                 checkOutTime = row[colIndex];
-                                console.log(`Fallback: Found check-out time at col ${colIndex}: ${checkOutTime}`);
+                                logger.info(`Fallback: Found check-out time at col ${colIndex}: ${checkOutTime}`);
                                 break;
                             }
                         }
                     }
                     
                     // Debug log for what we found
-                    console.log(`Before cleanup - check-in: ${checkInTime}, check-out: ${checkOutTime}`);
+                    logger.info(`Before cleanup - check-in: ${checkInTime}, check-out: ${checkOutTime}`);
                     
                     // Clean up the check-in and check-out times (remove BE/KI postfixes)
                     if (checkInTime) {
@@ -670,7 +671,7 @@ class ExcelParser {
                         checkOutTime = String(checkOutTime).trim().replace(/\s*KI\s*$/i, '');
                     }
                     
-                    console.log(`After cleanup - check-in: ${checkInTime}, check-out: ${checkOutTime}`);
+                    logger.info(`After cleanup - check-in: ${checkInTime}, check-out: ${checkOutTime}`);
                     
                     // Create the record with the data from this row
                     const record = {
@@ -695,26 +696,26 @@ class ExcelParser {
                     
                     // Skip the "Összesen" (total) line from being added to the table
                     if (record.date && String(record.date).includes('Összesen')) {
-                        console.log(`Skipping "Összesen" row with date: ${record.date}`);
+                        logger.info(`Skipping "Összesen" row with date: ${record.date}`);
                         dataStartRow++;
                         continue;
                     }
                     
                     // Log each record as we're processing
-                    console.log(`Processing row ${dataStartRow}:`, record);
+                    logger.info(`Processing row ${dataStartRow}:`, record);
                     
                     sectionRecords.push(record);
                     dataStartRow++;
                 }
                 
-                console.log(`Found ${sectionRecords.length} records in section ${sectionIdx + 1}`);
+                logger.info(`Found ${sectionRecords.length} records in section ${sectionIdx + 1}`);
                 allRecords.push(...sectionRecords);
             }
             
-            console.log(`Total records found across all sections: ${allRecords.length}`);
+            logger.info(`Total records found across all sections: ${allRecords.length}`);
             return allRecords;
         } catch (error) {
-            console.error('Error parsing SysWeb Excel:', error);
+            logger.error('Error parsing SysWeb Excel', { error: error.message });
             throw new Error(`Failed to parse SysWeb Excel: ${error.message}`);
         }
     }
@@ -726,11 +727,11 @@ class ExcelParser {
      */
     async parseAlertExcel(filePath) {
         try {
-            console.log('Starting Alert Excel parsing from:', filePath);
+            logger.info('Starting Alert Excel parsing from:', filePath);
             
             // Verify file exists
             if (!fs.existsSync(filePath)) {
-                console.error(`File does not exist: ${filePath}`);
+                logger.error(`File does not exist: ${filePath}`);
                 throw new Error(`File not found: ${filePath}`);
             }
             
@@ -739,29 +740,29 @@ class ExcelParser {
             try {
                 // First try with ExcelJS
                 const workbook = new ExcelJS.Workbook();
-                console.log('Reading Excel file with ExcelJS...');
+                logger.info('Reading Excel file with ExcelJS...');
                 await workbook.xlsx.readFile(filePath);
-                console.log('Excel file loaded successfully with ExcelJS');
+                logger.info('Excel file loaded successfully with ExcelJS');
                 
                 // Assume we're working with the first worksheet
                 const worksheet = workbook.worksheets[0];
-                console.log(`Working with worksheet: ${worksheet.name}`);
+                logger.info(`Working with worksheet: ${worksheet.name}`);
                 
                 // Resolve all merged cells into a 2D array
-                console.log('Resolving merged cells...');
+                logger.info('Resolving merged cells...');
                 resolvedData = this.resolveMergedCells(worksheet);
             } catch (error) {
                 // If ExcelJS fails, try with XLSX library as fallback
-                console.log('ExcelJS failed, trying with XLSX library:', error.message);
+                logger.log('ExcelJS failed, trying with XLSX library:', error.message);
                 
                 const XLSX = require('xlsx');
-                console.log('Reading Excel file with XLSX...');
+                logger.log('Reading Excel file with XLSX...');
                 const workbook = XLSX.readFile(filePath);
-                console.log('Excel file loaded successfully with XLSX');
+                logger.log('Excel file loaded successfully with XLSX');
                 
                 // Get first sheet
                 const firstSheetName = workbook.SheetNames[0];
-                console.log(`Working with worksheet: ${firstSheetName}`);
+                logger.log(`Working with worksheet: ${firstSheetName}`);
                 
                 // Convert to array of arrays
                 const worksheet = workbook.Sheets[firstSheetName];
@@ -771,11 +772,11 @@ class ExcelParser {
                 resolvedData = jsonData;
             }
             
-            console.log(`Resolved data has ${resolvedData.length} rows`);
+            logger.info(`Resolved data has ${resolvedData.length} rows`);
             
             // Detailed logging for the first few rows to help with debugging
             for (let i = 0; i < Math.min(10, resolvedData.length); i++) {
-                console.log(`Debug Row ${i}:`, JSON.stringify(resolvedData[i]));
+                logger.info(`Debug Row ${i}:`, JSON.stringify(resolvedData[i]));
             }
             
             // Find the header row that contains the column titles
@@ -802,19 +803,19 @@ class ExcelParser {
                         headerRow = i;
                         plateNumberCol = j;
                         foundHeaders = true;
-                        console.log(`Found 'rendszám' at row ${i}, col ${j}`);
+                        logger.info(`Found 'rendszám' at row ${i}, col ${j}`);
                     } else if (cellValue.includes('érkezés') || cellValue.includes('idopont') || cellValue.includes('időpont')) {
                         arrivalTimeCol = j;
-                        console.log(`Found 'érkezés időpont' at row ${i}, col ${j}`);
+                        logger.info(`Found 'érkezés időpont' at row ${i}, col ${j}`);
                     } else if (cellValue === 'állás' || cellValue === 'allas') {
                         statusCol = j;
-                        console.log(`Found 'állás' at row ${i}, col ${j}`);
+                        logger.info(`Found 'állás' at row ${i}, col ${j}`);
                     } else if (cellValue.includes('pozíció') || cellValue.includes('pozicio')) {
                         positionCol = j;
-                        console.log(`Found 'pozíció' at row ${i}, col ${j}`);
+                        logger.info(`Found 'pozíció' at row ${i}, col ${j}`);
                     } else if (cellValue.includes('fontos') || cellValue.includes('pont')) {
                         importantPointCol = j;
-                        console.log(`Found 'fontos pont' at row ${i}, col ${j}`);
+                        logger.info(`Found 'fontos pont' at row ${i}, col ${j}`);
                     }
                 }
                 
@@ -824,7 +825,7 @@ class ExcelParser {
             }
             
             if (headerRow === -1 || plateNumberCol === -1 || arrivalTimeCol === -1) {
-                console.warn('Could not find required columns in the Excel file. Ensure the file contains at least "rendszám" and "érkezés időpont" columns.');
+                logger.warn('Could not find required columns in the Excel file. Ensure the file contains at least "rendszám" and "érkezés időpont" columns.');
                 return [];
             }
             
@@ -855,7 +856,7 @@ class ExcelParser {
                         if (parseFloat(status) < 1) {
                             // Convert Excel time (fraction of day) to minutes
                             minutes = Math.round(parseFloat(status) * 24 * 60);
-                            console.log(`Converted Excel time ${status} to ${minutes} minutes`);
+                            logger.info(`Converted Excel time ${status} to ${minutes} minutes`);
                         } else {
                             // Just a regular number of minutes
                             minutes = parseInt(status, 10);
@@ -869,7 +870,7 @@ class ExcelParser {
                                 `${hours}:${mins.toString().padStart(2, '0')}` : 
                                 `0:${mins.toString().padStart(2, '0')}`;
                             
-                            console.log(`Formatted standing duration: ${status} (${minutes} minutes)`);
+                            logger.info(`Formatted standing duration: ${status} (${minutes} minutes)`);
                         }
                     }
                 }
@@ -880,12 +881,12 @@ class ExcelParser {
                 let importantPoint = '';
                 if (importantPointCol >= 0 && row[importantPointCol]) {
                     importantPoint = String(row[importantPointCol]).trim();
-                    console.log(`Setting important_point to string value: "${importantPoint}"`);
+                    logger.info(`Setting important_point to string value: "${importantPoint}"`);
                     
                     // Clean up the string - remove extra quotes if present
                     if (importantPoint.startsWith('"') && importantPoint.endsWith('"')) {
                         importantPoint = importantPoint.substring(1, importantPoint.length - 1);
-                        console.log(`Cleaned important_point value: "${importantPoint}"`);
+                        logger.info(`Cleaned important_point value: "${importantPoint}"`);
                     }
                 }
                 
@@ -914,7 +915,7 @@ class ExcelParser {
                         const seconds = String(jsDate.getSeconds()).padStart(2, '0');
                         
                         formattedArrivalTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-                        console.log(`Converted Excel date ${arrivalTime} to ${formattedArrivalTime}`);
+                        logger.info(`Converted Excel date ${arrivalTime} to ${formattedArrivalTime}`);
                     }
                     // If it's in DD.MM.YYYY HH:MM:SS format, convert it
                     else if (formattedArrivalTime.includes('.')) {
@@ -941,14 +942,14 @@ class ExcelParser {
                     important_point: importantPoint
                 };
                 
-                console.log(`Parsed record at row ${i}:`, record);
+                logger.info(`Parsed record at row ${i}:`, record);
                 allRecords.push(record);
             }
             
-            console.log(`Total alert records found: ${allRecords.length}`);
+            logger.info(`Total alert records found: ${allRecords.length}`);
             return allRecords;
         } catch (error) {
-            console.error('Error parsing Alert Excel:', error);
+            logger.error('Error parsing Alert Excel', { error: error.message });
             throw new Error(`Failed to parse Alert Excel: ${error.message}`);
         }
     }

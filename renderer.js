@@ -1,14 +1,34 @@
 // Import required modules
 const { ipcRenderer } = require('electron');
 
-console.log('Renderer started');
+// Create a logger wrapper for the renderer
+const rendererLogger = {
+  debug: (msg, data) => {
+    console.debug(msg, data || '');
+    ipcRenderer.invoke('log-message', { level: 'debug', message: msg, data });
+  },
+  info: (msg, data) => {
+    console.info(msg, data || '');
+    ipcRenderer.invoke('log-message', { level: 'info', message: msg, data });
+  },
+  warn: (msg, data) => {
+    console.warn(msg, data || '');
+    ipcRenderer.invoke('log-message', { level: 'warn', message: msg, data });
+  },
+  error: (msg, data) => {
+    console.error(msg, data || '');
+    ipcRenderer.invoke('log-message', { level: 'error', message: msg, data });
+  }
+};
+
+rendererLogger.info('Renderer started');
 
 // Add this global flag at the top of the file, outside any functions
 let importInitialized = false;
 
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded - initializing renderer');
+    rendererLogger.info('DOM loaded - initializing renderer');
     
     // Add a splash effect to the dashboard
     addSplashEffect();
@@ -24,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (insertDemoDataBtn) {
         insertDemoDataBtn.addEventListener('click', async () => {
             try {
-                console.log('Inserting demo data...');
+                rendererLogger.info('Inserting demo data...');
                 insertDemoDataBtn.disabled = true;
                 insertDemoDataBtn.textContent = 'Loading...';
                 
@@ -36,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await ipcRenderer.invoke('insert-demo-data');
                 
                 if (result.success) {
-                    console.log('Demo data inserted successfully');
+                    rendererLogger.info('Demo data inserted successfully');
                     // Show success notification
                     showNotification('Demo data inserted successfully!', 'success');
                     
@@ -47,11 +67,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     loadRounds();
                     loadAlerts();
                 } else {
-                    console.error('Error inserting demo data:', result.error);
+                    rendererLogger.error('Error inserting demo data', { error: result.error });
                     showNotification('Error inserting demo data', 'error');
                 }
             } catch (error) {
-                console.error('Error inserting demo data:', error);
+                rendererLogger.error('Error inserting demo data', { error: error.message });
                 showNotification('Error inserting demo data', 'error');
             } finally {
                 insertDemoDataBtn.disabled = false;
@@ -118,7 +138,7 @@ function initializeTabs() {
     tabButtons.forEach(button => {
         button.addEventListener('click', () => {
             const tabId = button.getAttribute('data-tab');
-            console.log('Tab clicked:', tabId);
+            rendererLogger.info('Tab clicked', { tabId });
             
             // Update active tab button
             tabButtons.forEach(btn => btn.classList.remove('active'));
@@ -148,11 +168,11 @@ function initializeTabs() {
 
 // Load vehicles data
 async function loadVehicles() {
-    console.log('Loading vehicles data');
+    rendererLogger.info('Loading vehicles data');
     const vehiclesContainer = document.querySelector('#vehicles-tab .data-container');
     
     if (!vehiclesContainer) {
-        console.error('Vehicles container not found');
+        rendererLogger.error('Vehicles container not found');
         return;
     }
     
@@ -179,18 +199,18 @@ async function loadVehicles() {
         
         vehiclesContainer.innerHTML = html;
     } catch (error) {
-        console.error('Error loading vehicles:', error);
+        rendererLogger.error('Error loading vehicles', { error: error.message });
         vehiclesContainer.innerHTML = `<div class="error-message">Error loading vehicles: ${error.message}</div>`;
     }
 }
 
 // Load people data
 async function loadPeople() {
-    console.log('Loading people data');
+    rendererLogger.info('Loading people data');
     const peopleContainer = document.querySelector('#people-tab .data-container');
     
     if (!peopleContainer) {
-        console.error('People container not found');
+        rendererLogger.error('People container not found');
         return;
     }
     
@@ -218,18 +238,18 @@ async function loadPeople() {
         
         peopleContainer.innerHTML = html;
     } catch (error) {
-        console.error('Error loading people:', error);
+        rendererLogger.error('Error loading people', { error: error.message });
         peopleContainer.innerHTML = `<div class="error-message">Error loading people: ${error.message}</div>`;
     }
 }
 
 // Load rounds data
 async function loadRounds() {
-    console.log('Loading rounds data');
+    rendererLogger.info('Loading rounds data');
     const roundsContainer = document.querySelector('#rounds-tab .data-container');
     
     if (!roundsContainer) {
-        console.error('Rounds container not found');
+        rendererLogger.error('Rounds container not found');
         return;
     }
     
@@ -256,18 +276,18 @@ async function loadRounds() {
         
         roundsContainer.innerHTML = html;
     } catch (error) {
-        console.error('Error loading rounds:', error);
+        rendererLogger.error('Error loading rounds', { error: error.message });
         roundsContainer.innerHTML = `<div class="error-message">Error loading rounds: ${error.message}</div>`;
     }
 }
 
 // Load alerts data
 async function loadAlerts() {
-    console.log('Loading alerts data');
+    rendererLogger.info('Loading alerts data');
     const alertsContainer = document.querySelector('#alerts-tab .data-container');
     
     if (!alertsContainer) {
-        console.error('Alerts container not found');
+        rendererLogger.error('Alerts container not found');
         return;
     }
     
@@ -295,14 +315,14 @@ async function loadAlerts() {
         
         alertsContainer.innerHTML = html;
     } catch (error) {
-        console.error('Error loading alerts:', error);
+        rendererLogger.error('Error loading alerts', { error: error.message });
         alertsContainer.innerHTML = `<div class="error-message">Error loading alerts: ${error.message}</div>`;
     }
 }
 
 // Load dashboard counts
 async function loadDashboardCounts() {
-    console.log('Loading dashboard counts');
+    rendererLogger.info('Loading dashboard counts');
     
     try {
         // Get people count
@@ -311,7 +331,7 @@ async function loadDashboardCounts() {
             const people = await ipcRenderer.invoke('get-people');
             peopleCount = people ? people.length : 0;
         } catch (error) {
-            console.error('Error loading people count:', error);
+            rendererLogger.error('Error loading people count', { error: error.message });
             peopleCount = 12; // Demo fallback
         }
         document.getElementById('people-count').textContent = peopleCount;
@@ -322,7 +342,7 @@ async function loadDashboardCounts() {
             const vehicles = await ipcRenderer.invoke('get-vehicles');
             vehiclesCount = vehicles ? vehicles.length : 0;
         } catch (error) {
-            console.error('Error loading vehicles count:', error);
+            rendererLogger.error('Error loading vehicles count', { error: error.message });
             vehiclesCount = 8; // Demo fallback
         }
         document.getElementById('vehicles-count').textContent = vehiclesCount;
@@ -333,7 +353,7 @@ async function loadDashboardCounts() {
             const rounds = await ipcRenderer.invoke('get-rounds');
             roundsCount = rounds ? rounds.length : 0;
         } catch (error) {
-            console.error('Error loading rounds count:', error);
+            rendererLogger.error('Error loading rounds count', { error: error.message });
             roundsCount = 4; // Demo fallback
         }
         document.getElementById('rounds-count').textContent = roundsCount;
@@ -344,14 +364,19 @@ async function loadDashboardCounts() {
             const alerts = await ipcRenderer.invoke('get-alerts');
             alertsCount = alerts ? alerts.length : 0;
         } catch (error) {
-            console.error('Error loading alerts count:', error);
+            rendererLogger.error('Error loading alerts count', { error: error.message });
             alertsCount = 3; // Demo fallback
         }
         document.getElementById('alerts-count').textContent = alertsCount;
         
-        console.log('Dashboard counts updated');
+        rendererLogger.info('Dashboard counts updated', { 
+            peopleCount, 
+            vehiclesCount, 
+            roundsCount,
+            alertsCount 
+        });
     } catch (error) {
-        console.error('Error loading dashboard counts:', error);
+        rendererLogger.error('Error loading dashboard counts', { error: error.message });
         // Fall back to demo mode
         document.getElementById('people-count').textContent = '12';
         document.getElementById('vehicles-count').textContent = '8';
@@ -364,14 +389,14 @@ async function loadDashboardCounts() {
 const importTabBtn = document.querySelector('.tab-btn[data-tab="import-tab"]');
 if (importTabBtn) {
     importTabBtn.addEventListener('click', () => {
-        console.log('Import tab activated');
+        rendererLogger.info('Import tab activated');
         // Don't add any button event handlers here - they're now in initializeImport()
     });
 }
 
 // Import functionality
 function initializeImport() {
-    console.log('Initializing import functionality');
+    rendererLogger.info('Initializing import functionality');
     
     // Get DOM elements
     let selectFileBtn = document.getElementById('select-file-btn');
@@ -394,7 +419,7 @@ function initializeImport() {
     if (importTypeSelector) {
         importTypeSelector.addEventListener('change', (event) => {
             currentImportType = event.target.value;
-            console.log(`Import type changed to: ${currentImportType}`);
+            rendererLogger.info(`Import type changed to: ${currentImportType}`);
             
             // Reset preview data when import type changes
             previewData = null;
@@ -431,11 +456,11 @@ function initializeImport() {
                     // Reset preview data when new file is selected
                     previewData = null;
                     
-                    console.log('Selected file:', excelFilePath);
+                    rendererLogger.info('File selected for import', { filePath: excelFilePath });
                     showImportStatus('File selected. Click "Process" to import data.', 'info');
                 }
             } catch (error) {
-                console.error('Error selecting file:', error);
+                rendererLogger.error('Error selecting file', { error: error.message });
                 showImportStatus('Error selecting file: ' + error.message, 'error');
             }
         });
@@ -466,7 +491,7 @@ function initializeImport() {
         importDataBtn = newImportBtn;
         
         importDataBtn.addEventListener('click', async () => {
-            console.log('Process imported data button clicked');
+            rendererLogger.info('Process imported data button clicked');
             
             if (!excelFilePath) {
                 showImportStatus('Please select a file first', 'error');
@@ -487,7 +512,7 @@ function initializeImport() {
                 switch (currentImportType) {
                     case 'worktime':
                         // For SysWeb/worktime, we need to preview first
-                        console.log('Parsing SysWeb data for preview');
+                        rendererLogger.info('Parsing SysWeb data for preview', { filePath: excelFilePath });
                         result = await ipcRenderer.invoke('parse-sysweb-excel', excelFilePath);
                         break;
                     case 'alerts':
@@ -495,14 +520,14 @@ function initializeImport() {
                     case 'autodetect':
                     default:
                         // For other types, proceed directly to import
-                        console.log(`Importing ${currentImportType} data directly`);
+                        rendererLogger.info(`Importing ${currentImportType} data directly`, { filePath: excelFilePath });
                         result = await performDirectImport(excelFilePath, currentImportType);
                         break;
                 }
                 
                 if (importLoading) importLoading.style.display = 'none';
                 
-                console.log('Parse result:', result);
+                rendererLogger.debug('Parse result', result);
                 
                 if (result && result.success) {
                     // For SysWeb/worktime, show preview before final import
@@ -521,7 +546,7 @@ function initializeImport() {
                     showImportStatus(`Parse failed: ${result ? result.message : 'Unknown error'}`, 'error');
                 }
             } catch (error) {
-                console.error('Error processing data:', error);
+                rendererLogger.error('Error processing data', { error: error.message });
                 showImportStatus(`Error processing data: ${error.message}`, 'error');
                 if (importLoading) importLoading.style.display = 'none';
             }
@@ -561,7 +586,7 @@ function initializeImport() {
                 showImportStatus(`Import failed: ${result ? result.message : 'Unknown error'}`, 'error');
             }
         } catch (error) {
-            console.error('Error importing confirmed data:', error);
+            rendererLogger.error('Error importing confirmed data', { error: error.message });
             showImportStatus(`Error importing data: ${error.message}`, 'error');
             if (importLoading) importLoading.style.display = 'none';
         }
@@ -690,7 +715,7 @@ function initializeImport() {
             
             importedRecords.innerHTML = html;
         } catch (error) {
-            console.error('Error displaying SysWeb data:', error);
+            rendererLogger.error('Error displaying SysWeb data', { error: error.message });
             importedRecords.innerHTML = `<p class="error">Error displaying data: ${error.message}</p>`;
         }
     }
@@ -741,7 +766,7 @@ function initializeImport() {
             
             importedRecords.innerHTML = html;
         } catch (error) {
-            console.error('Error displaying Alerts data:', error);
+            rendererLogger.error('Error displaying Alerts data', { error: error.message });
             importedRecords.innerHTML = `<p class="error">Error displaying data: ${error.message}</p>`;
         }
     }

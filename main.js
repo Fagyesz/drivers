@@ -11,6 +11,7 @@ const excelParser = require('./src/excelParser');
 
 // Import logger and issue manager
 const logger = require('./src/logger');
+logger.setLogLevel('debug'); // Set log level to debug to capture more details
 const issueManager = require('./src/issues');
 
 // Initialize database with the correct path
@@ -1016,5 +1017,23 @@ ipcMain.handle('parse-alert-excel', async (event, filePath) => {
       total: 0,
       message: `Error parsing Excel: ${error.message}`
     };
+  }
+});
+
+// IPC handler for log messages from renderer process
+ipcMain.handle('log-message', (event, logData) => {
+  if (!logData || !logData.level || !logData.message) {
+    return { success: false, error: 'Invalid log data format' };
+  }
+  
+  const { level, message, data } = logData;
+  
+  // Only log if level is valid
+  if (typeof logger[level] === 'function') {
+    logger[level](message, data);
+    return { success: true };
+  } else {
+    console.error(`Invalid log level: ${level}`);
+    return { success: false, error: 'Invalid log level' };
   }
 }); 

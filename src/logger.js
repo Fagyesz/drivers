@@ -249,6 +249,24 @@ class Logger {
             return [];
         }
     }
+
+    /**
+     * Set the log level
+     * @param {string} level - Log level (error, warn, info, debug)
+     */
+    setLogLevel(level) {
+        if (!this.logLevels[level]) {
+            console.error(`Invalid log level: ${level}. Using 'info' instead.`);
+            this.options.logLevel = 'info';
+            return;
+        }
+        
+        const oldLevel = this.options.logLevel;
+        this.options.logLevel = level;
+        
+        // Log the level change
+        this.info(`Log level changed from '${oldLevel}' to '${level}'`);
+    }
 }
 
 // Export logger instance
