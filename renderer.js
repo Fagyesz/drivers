@@ -852,7 +852,9 @@ function initializeImport() {
                 // Skip invalid plate numbers/header data
                 if (plate.toLowerCase().includes('rendszám') || 
                     plate.toLowerCase().includes('terület') || 
-                    plate.toLowerCase().includes('telephely')) {
+                    plate.toLowerCase().includes('telephely') ||
+                    plate === 'Unknown' ||
+                    !isValidPlateNumber(plate)) {
                     return;
                 }
                 
@@ -871,12 +873,24 @@ function initializeImport() {
             
             // Get unique valid plate numbers
             const validPlates = Object.keys(groupedByPlate).filter(plate => 
-                plate !== 'Unknown' && 
-                (plate.includes('-') && plate.length >= 5 && plate.length <= 10)
+                isValidPlateNumber(plate)
             );
             
-            // Sort plate numbers alphabetically
-            validPlates.sort();
+            // Helper function to validate plate numbers
+            function isValidPlateNumber(plate) {
+                // Must contain hyphen, be between 5-10 chars, and not contain header-like terms
+                return plate !== 'Unknown' && 
+                       plate.includes('-') && 
+                       plate.length >= 5 && 
+                       plate.length <= 10 &&
+                       !plate.toLowerCase().includes('rendszám') &&
+                       !plate.toLowerCase().includes('terület') &&
+                       !plate.toLowerCase().includes('telephely') &&
+                       !plate.toLowerCase().includes('időpont') &&
+                       !plate.toLowerCase().includes('irány') &&
+                       !plate.toLowerCase().includes('töltött') &&
+                       !plate.toLowerCase().includes('megtett');
+            }
             
             // Count total records after deduplication
             const totalRecords = Object.values(groupedByPlate).reduce(
@@ -903,7 +917,7 @@ function initializeImport() {
             html += `
                 <div class="preview-controls preview-button-container">
                     <button id="confirm-ifleet-import" class="btn btn-success import-btn">Import to DB</button>
-                    <button id="cancel-ifleet-import" class="btn btn-secondary">Clear</button>
+                    <button id="cancel-ifleet-import" class="btn btn-secondary clear-btn">Clear</button>
                 </div>
             `;
             
@@ -1036,19 +1050,52 @@ function initializeImport() {
                         if (importLoading) importLoading.style.display = 'flex';
                         showImportStatus('Importing valid vehicle data to database...', 'info');
                         
-                        // Filter data to include only valid plate numbers
-                        const validData = data.filter(record => {
+                        // Filter data to include only valid plate numbers AND deduplicate at the same time
+                        const uniqueRecords = new Map();
+                        
+                        // First pass - collect only valid plate records with unique keys
+                        data.forEach(record => {
                             const plate = record.platenumber || '';
-                            return validPlates.includes(plate);
+                            
+                            // Skip records with invalid or header-like data
+                            if (!isValidPlateNumber(plate)) return;
+                            
+                            // Also filter out records with header data in other fields
+                            if (record.area_name && 
+                                (record.area_name.toLowerCase().includes('terület') || 
+                                 record.area_name.toLowerCase().includes('név') ||
+                                 record.area_name.toLowerCase().includes('neve'))) {
+                                return;
+                            }
+                            
+                            if (record.direction && 
+                                (record.direction.toLowerCase().includes('irány') ||
+                                 record.direction.toLowerCase().includes('direction'))) {
+                                return;
+                            }
+                            
+                            // Create a unique key for each record to avoid duplicates
+                            const uniqueKey = `${plate}-${record.timestamp}-${record.area_name}-${record.direction}`;
+                            
+                            // Only keep the first occurrence of each unique entry
+                            if (!uniqueRecords.has(uniqueKey)) {
+                                uniqueRecords.set(uniqueKey, record);
+                            }
                         });
                         
-                        // Trigger the final database update with only valid plate numbers
+                        // Convert the Map values to an array
+                        const validData = Array.from(uniqueRecords.values());
+                        
+                        // Log the deduplication results
+                        console.log(`Filtered from ${data.length} records to ${validData.length} unique records for import`);
+                        
+                        // Trigger the final database update with only unique valid plate numbers
                         const result = await ipcRenderer.invoke('confirm-ifleet-import', validData);
                         
                         if (importLoading) importLoading.style.display = 'none';
                         
                         if (result && result.success) {
-                            showImportStatus(`Successfully imported ${validPlates.length} vehicles to database`, 'success');
+                            showImportStatus(`Successfully imported ${validPlates.length} vehicles (${validData.length} unique records) to database`, 'success');
                             
                             // Dispatch event similar to SysWeb
                             const event = new CustomEvent('ifleet-import-confirmed', {
