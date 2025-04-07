@@ -718,6 +718,240 @@ class ExcelParser {
             throw new Error(`Failed to parse SysWeb Excel: ${error.message}`);
         }
     }
+
+    /**
+     * Parse alerts Excel format specifically
+     * @param {string} filePath - Path to the Excel file
+     * @returns {Array} Array of records in the correct format for stop_events_alert table
+     */
+    async parseAlertExcel(filePath) {
+        try {
+            console.log('Starting Alert Excel parsing from:', filePath);
+            
+            // Verify file exists
+            if (!fs.existsSync(filePath)) {
+                console.error(`File does not exist: ${filePath}`);
+                throw new Error(`File not found: ${filePath}`);
+            }
+            
+            let resolvedData = [];
+            
+            try {
+                // First try with ExcelJS
+                const workbook = new ExcelJS.Workbook();
+                console.log('Reading Excel file with ExcelJS...');
+                await workbook.xlsx.readFile(filePath);
+                console.log('Excel file loaded successfully with ExcelJS');
+                
+                // Assume we're working with the first worksheet
+                const worksheet = workbook.worksheets[0];
+                console.log(`Working with worksheet: ${worksheet.name}`);
+                
+                // Resolve all merged cells into a 2D array
+                console.log('Resolving merged cells...');
+                resolvedData = this.resolveMergedCells(worksheet);
+            } catch (error) {
+                // If ExcelJS fails, try with XLSX library as fallback
+                console.log('ExcelJS failed, trying with XLSX library:', error.message);
+                
+                const XLSX = require('xlsx');
+                console.log('Reading Excel file with XLSX...');
+                const workbook = XLSX.readFile(filePath);
+                console.log('Excel file loaded successfully with XLSX');
+                
+                // Get first sheet
+                const firstSheetName = workbook.SheetNames[0];
+                console.log(`Working with worksheet: ${firstSheetName}`);
+                
+                // Convert to array of arrays
+                const worksheet = workbook.Sheets[firstSheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                
+                // Use the JSON data as our resolved data
+                resolvedData = jsonData;
+            }
+            
+            console.log(`Resolved data has ${resolvedData.length} rows`);
+            
+            // Detailed logging for the first few rows to help with debugging
+            for (let i = 0; i < Math.min(10, resolvedData.length); i++) {
+                console.log(`Debug Row ${i}:`, JSON.stringify(resolvedData[i]));
+            }
+            
+            // Find the header row that contains the column titles
+            let headerRow = -1;
+            let plateNumberCol = -1;
+            let arrivalTimeCol = -1;
+            let statusCol = -1;
+            let positionCol = -1;
+            let importantPointCol = -1;
+            
+            // Look for header row with "rendszám", "érkezés időpont", etc.
+            for (let i = 0; i < resolvedData.length; i++) {
+                const row = resolvedData[i];
+                if (!row) continue;
+                
+                let foundHeaders = false;
+                for (let j = 0; j < row.length; j++) {
+                    const cell = row[j];
+                    if (!cell) continue;
+                    
+                    const cellValue = String(cell).trim().toLowerCase();
+                    
+                    if (cellValue === 'rendszám') {
+                        headerRow = i;
+                        plateNumberCol = j;
+                        foundHeaders = true;
+                        console.log(`Found 'rendszám' at row ${i}, col ${j}`);
+                    } else if (cellValue.includes('érkezés') || cellValue.includes('idopont') || cellValue.includes('időpont')) {
+                        arrivalTimeCol = j;
+                        console.log(`Found 'érkezés időpont' at row ${i}, col ${j}`);
+                    } else if (cellValue === 'állás' || cellValue === 'allas') {
+                        statusCol = j;
+                        console.log(`Found 'állás' at row ${i}, col ${j}`);
+                    } else if (cellValue.includes('pozíció') || cellValue.includes('pozicio')) {
+                        positionCol = j;
+                        console.log(`Found 'pozíció' at row ${i}, col ${j}`);
+                    } else if (cellValue.includes('fontos') || cellValue.includes('pont')) {
+                        importantPointCol = j;
+                        console.log(`Found 'fontos pont' at row ${i}, col ${j}`);
+                    }
+                }
+                
+                if (foundHeaders) {
+                    break; // We found the header row, no need to continue
+                }
+            }
+            
+            if (headerRow === -1 || plateNumberCol === -1 || arrivalTimeCol === -1) {
+                console.warn('Could not find required columns in the Excel file. Ensure the file contains at least "rendszám" and "érkezés időpont" columns.');
+                return [];
+            }
+            
+            // Process data rows
+            const allRecords = [];
+            const dataStartRow = headerRow + 1;
+            
+            for (let i = dataStartRow; i < resolvedData.length; i++) {
+                const row = resolvedData[i];
+                if (!row || !row[plateNumberCol] || !row[arrivalTimeCol]) {
+                    // Skip rows without plate number or arrival time
+                    continue;
+                }
+                
+                const plateNumber = row[plateNumberCol] ? String(row[plateNumberCol]).trim() : '';
+                const arrivalTime = row[arrivalTimeCol] ? String(row[arrivalTimeCol]).trim() : '';
+                
+                // status is actually a duration in minutes
+                let status = '';
+                if (statusCol >= 0 && row[statusCol]) {
+                    status = String(row[statusCol]).trim();
+                    
+                    // If it's a numeric value (either plain number or Excel decimal time)
+                    if (!isNaN(status)) {
+                        let minutes = 0;
+                        
+                        // Check if it's an Excel decimal time (fraction of a day)
+                        if (parseFloat(status) < 1) {
+                            // Convert Excel time (fraction of day) to minutes
+                            minutes = Math.round(parseFloat(status) * 24 * 60);
+                            console.log(`Converted Excel time ${status} to ${minutes} minutes`);
+                        } else {
+                            // Just a regular number of minutes
+                            minutes = parseInt(status, 10);
+                        }
+                        
+                        // Format as MM:SS if it's a valid number
+                        if (!isNaN(minutes)) {
+                            const hours = Math.floor(minutes / 60);
+                            const mins = minutes % 60;
+                            status = hours > 0 ? 
+                                `${hours}:${mins.toString().padStart(2, '0')}` : 
+                                `0:${mins.toString().padStart(2, '0')}`;
+                            
+                            console.log(`Formatted standing duration: ${status} (${minutes} minutes)`);
+                        }
+                    }
+                }
+                
+                const position = positionCol >= 0 && row[positionCol] ? String(row[positionCol]).trim() : '';
+                
+                // Determine if this is marked as an important point
+                let importantPoint = '';
+                if (importantPointCol >= 0 && row[importantPointCol]) {
+                    importantPoint = String(row[importantPointCol]).trim();
+                    console.log(`Setting important_point to string value: "${importantPoint}"`);
+                    
+                    // Clean up the string - remove extra quotes if present
+                    if (importantPoint.startsWith('"') && importantPoint.endsWith('"')) {
+                        importantPoint = importantPoint.substring(1, importantPoint.length - 1);
+                        console.log(`Cleaned important_point value: "${importantPoint}"`);
+                    }
+                }
+                
+                // Format arrival time appropriately
+                let formattedArrivalTime = arrivalTime;
+                if (formattedArrivalTime) {
+                    // If it's a numeric Excel date, convert it to a proper date string
+                    if (!isNaN(formattedArrivalTime)) {
+                        // Excel dates are number of days since 1/1/1900
+                        // Convert Excel serial date to JavaScript date
+                        const excelEpoch = new Date(1900, 0, 1);
+                        let jsDate = new Date(excelEpoch);
+                        jsDate.setDate(excelEpoch.getDate() + parseInt(formattedArrivalTime) - 2); // -2 adjustment for Excel date system
+                        
+                        // Get fractional part for time
+                        const fraction = formattedArrivalTime - Math.floor(formattedArrivalTime);
+                        const millisInDay = 24 * 60 * 60 * 1000;
+                        jsDate = new Date(jsDate.getTime() + fraction * millisInDay);
+                        
+                        // Format as YYYY-MM-DD HH:MM:SS
+                        const year = jsDate.getFullYear();
+                        const month = String(jsDate.getMonth() + 1).padStart(2, '0');
+                        const day = String(jsDate.getDate()).padStart(2, '0');
+                        const hours = String(jsDate.getHours()).padStart(2, '0');
+                        const minutes = String(jsDate.getMinutes()).padStart(2, '0');
+                        const seconds = String(jsDate.getSeconds()).padStart(2, '0');
+                        
+                        formattedArrivalTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                        console.log(`Converted Excel date ${arrivalTime} to ${formattedArrivalTime}`);
+                    }
+                    // If it's in DD.MM.YYYY HH:MM:SS format, convert it
+                    else if (formattedArrivalTime.includes('.')) {
+                        const parts = formattedArrivalTime.split(' ');
+                        if (parts.length > 0) {
+                            const datePart = parts[0].split('.');
+                            if (datePart.length >= 3) {
+                                const day = datePart[0].trim().padStart(2, '0');
+                                const month = datePart[1].trim().padStart(2, '0');
+                                const year = datePart[2].trim();
+                                const timePart = parts.length > 1 ? parts[1] : '00:00:00';
+                                formattedArrivalTime = `${year}-${month}-${day} ${timePart}`;
+                            }
+                        }
+                    }
+                }
+                
+                // Create record
+                const record = {
+                    plate_number: plateNumber,
+                    arrival_time: formattedArrivalTime,
+                    status: status,
+                    position: position,
+                    important_point: importantPoint
+                };
+                
+                console.log(`Parsed record at row ${i}:`, record);
+                allRecords.push(record);
+            }
+            
+            console.log(`Total alert records found: ${allRecords.length}`);
+            return allRecords;
+        } catch (error) {
+            console.error('Error parsing Alert Excel:', error);
+            throw new Error(`Failed to parse Alert Excel: ${error.message}`);
+        }
+    }
 }
 
 module.exports = new ExcelParser(); 

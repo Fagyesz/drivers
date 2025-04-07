@@ -107,16 +107,13 @@ class DriverAlertsDatabase {
       stop_events_alert: `
         CREATE TABLE IF NOT EXISTS stop_events_alert (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          vehicle_id INTEGER NOT NULL,
-          alert_type TEXT CHECK(alert_type IN ('extended_stop', 'unexpected_stop', 'deviation', 'other')) DEFAULT 'other',
-          location TEXT,
-          timestamp TEXT NOT NULL,
-          duration INTEGER,
-          status TEXT CHECK(status IN ('new', 'acknowledged', 'resolved', 'ignored')) DEFAULT 'new',
-          details TEXT,
+          plate_number TEXT NOT NULL,
+          arrival_time TEXT NOT NULL,
+          status TEXT,
+          position TEXT,
+          important_point TEXT,
           created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (vehicle_id) REFERENCES vehicles (id)
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
       `,
       settings: `
@@ -158,7 +155,7 @@ class DriverAlertsDatabase {
           this.ensureVehiclesColumns();
         }
         
-        // After creating stop_events_alert table, check if timestamp column exists
+        // After creating stop_events_alert table, check if arrival_time column exists
         if (tableName === 'stop_events_alert') {
           this.ensureStopEventsColumns();
         }
@@ -188,12 +185,48 @@ class DriverAlertsDatabase {
   ensureStopEventsColumns() {
     try {
       const tableInfo = this.db.prepare(`PRAGMA table_info(stop_events_alert)`).all();
-      const hasTimestamp = tableInfo.some(col => col.name === 'timestamp');
+      const hasArrivalTime = tableInfo.some(col => col.name === 'arrival_time');
       
-      if (!hasTimestamp) {
-        console.warn("Adding missing timestamp column to stop_events_alert table");
-        // Add the missing column
-        this.db.exec(`ALTER TABLE stop_events_alert ADD COLUMN timestamp TEXT DEFAULT CURRENT_TIMESTAMP`);
+      if (!hasArrivalTime) {
+        console.warn("Adding missing arrival_time column to stop_events_alert table");
+        // Add the missing column with a string default instead of CURRENT_TIMESTAMP
+        this.db.exec(`ALTER TABLE stop_events_alert ADD COLUMN arrival_time TEXT DEFAULT ''`);
+      }
+      
+      // Check for important_point column
+      const hasImportantPoint = tableInfo.some(col => col.name === 'important_point');
+      if (!hasImportantPoint) {
+        console.warn("Adding missing important_point column to stop_events_alert table");
+        this.db.exec(`ALTER TABLE stop_events_alert ADD COLUMN important_point TEXT DEFAULT ''`);
+      } else {
+        // Check if type needs to be changed from INTEGER to TEXT
+        const importantPointType = tableInfo.find(col => col.name === 'important_point')?.type;
+        if (importantPointType && importantPointType.toUpperCase() === 'INTEGER') {
+          console.warn("Converting important_point column from INTEGER to TEXT");
+          this.db.exec(`
+            -- Create temporary table
+            CREATE TABLE temp_stop_events_alert AS SELECT * FROM stop_events_alert;
+            -- Drop original table
+            DROP TABLE stop_events_alert;
+            -- Recreate table with TEXT type for important_point
+            CREATE TABLE stop_events_alert (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              plate_number TEXT NOT NULL,
+              arrival_time TEXT NOT NULL,
+              status TEXT,
+              position TEXT,
+              important_point TEXT,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            -- Copy data back
+            INSERT INTO stop_events_alert 
+            SELECT id, plate_number, arrival_time, status, position, CAST(important_point AS TEXT), created_at, updated_at 
+            FROM temp_stop_events_alert;
+            -- Drop temp table
+            DROP TABLE temp_stop_events_alert;
+          `);
+        }
       }
     } catch (error) {
       console.error('Error ensuring stop events columns:', error);
@@ -450,18 +483,16 @@ class DriverAlertsDatabase {
     try {
       const query = `
         INSERT INTO stop_events_alert (
-          vehicle_id, alert_type, location, timestamp, duration, status, details, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          plate_number, arrival_time, status, position, important_point, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
       `;
       
       const result = this.db.prepare(query).run(
-        alertData.vehicle_id,
-        alertData.alert_type,
-        alertData.location,
-        alertData.timestamp,
-        alertData.duration,
+        alertData.plate_number,
+        alertData.arrival_time,
         alertData.status,
-        alertData.details
+        alertData.position,
+        alertData.important_point || 0
       );
       
       return result.lastInsertRowid;
@@ -487,6 +518,22 @@ class DriverAlertsDatabase {
     }
   }
 
+  // Update alert important flag
+  async updateAlertImportant(id, isImportant) {
+    try {
+      const query = `
+        UPDATE stop_events_alert 
+        SET important_point = ?,
+            updated_at = datetime('now') 
+        WHERE id = ?
+      `;
+      return this.db.prepare(query).run(isImportant ? 1 : 0, id);
+    } catch (error) {
+      console.error('Error updating alert important flag:', error);
+      throw error;
+    }
+  }
+
   // Close the database connection
   close() {
     if (this.db) {
@@ -498,19 +545,19 @@ class DriverAlertsDatabase {
   async getAlerts() {
     try {
       console.log("Getting alerts from stop_events_alert table");
-      // First check if the table exists and has the timestamp column
+      // First check if the table exists and has the arrival_time column
       try {
         const tableInfo = this.db.prepare(`PRAGMA table_info(stop_events_alert)`).all();
-        const hasTimestamp = tableInfo.some(col => col.name === 'timestamp');
+        const hasArrivalTime = tableInfo.some(col => col.name === 'arrival_time');
         
-        if (!hasTimestamp) {
-          console.warn("stop_events_alert table doesn't have timestamp column, returning empty array");
+        if (!hasArrivalTime) {
+          console.warn("stop_events_alert table doesn't have arrival_time column, returning empty array");
           return [];
         }
         
         const query = `
           SELECT * FROM stop_events_alert 
-          ORDER BY timestamp DESC
+          ORDER BY arrival_time DESC
         `;
         return this.db.prepare(query).all();
       } catch (error) {
@@ -639,16 +686,16 @@ class DriverAlertsDatabase {
       // Insert demo alerts
       if (truck1Id) {
         this.db.prepare(`
-          INSERT INTO stop_events_alert (vehicle_id, alert_type, location, timestamp, duration, status, details, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-        `).run(truck1Id, 'extended_stop', 'Downtown Helsinki', '2023-05-15 10:30:00', 45, 'new', 'Vehicle stopped for extended period');
+          INSERT INTO stop_events_alert (plate_number, arrival_time, status, position, important_point, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `).run('ABC-123', '2023-05-15 10:30:00', 'H', 'Downtown Helsinki', 1);
       }
       
       if (vanId) {
         this.db.prepare(`
-          INSERT INTO stop_events_alert (vehicle_id, alert_type, location, timestamp, duration, status, details, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-        `).run(vanId, 'unexpected_stop', 'Espoo Mall', '2023-05-15 14:15:00', 30, 'acknowledged', 'Unscheduled stop detected');
+          INSERT INTO stop_events_alert (plate_number, arrival_time, status, position, important_point, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `).run('XYZ-789', '2023-05-15 14:15:00', 'H', 'Espoo Mall', 0);
       }
       
       // Commit transaction
@@ -779,6 +826,85 @@ class DriverAlertsDatabase {
     } catch (error) {
       console.error('Error getting SysWeb data:', error);
       throw error;
+    }
+  }
+
+  // Import Alert Excel data
+  async importAlertData(records) {
+    const result = { success: 0, errors: 0, total: records.length };
+    
+    if (!records || records.length === 0) {
+      return result;
+    }
+    
+    try {
+      console.log(`Importing ${records.length} Alert records to database`);
+      
+      // Begin transaction
+      const transaction = this.db.transaction((data) => {
+        // First clear existing data
+        console.log('Clearing existing data from stop_events_alert table');
+        this.db.prepare(`DELETE FROM stop_events_alert`).run();
+        
+        // Insert new records
+        const stmt = this.db.prepare(`
+          INSERT INTO stop_events_alert (
+            plate_number, arrival_time, status, position, important_point, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `);
+        
+        for (const record of data) {
+          try {
+            // Clean and format data
+            const cleanRecord = {
+              plate_number: record.plate_number || '',
+              arrival_time: record.arrival_time || '',
+              status: record.status || '',
+              position: record.position || '',
+              important_point: record.important_point || 0
+            };
+            
+            console.log('Inserting alert record:', cleanRecord);
+            
+            stmt.run(
+              cleanRecord.plate_number,
+              cleanRecord.arrival_time,
+              cleanRecord.status,
+              cleanRecord.position,
+              cleanRecord.important_point
+            );
+            result.success++;
+          } catch (error) {
+            console.error('Error inserting Alert record:', error, record);
+            result.errors++;
+          }
+        }
+      });
+      
+      // Execute transaction
+      transaction(records);
+      
+      console.log('Alert import completed with result:', result);
+      return result;
+    } catch (error) {
+      console.error('Error importing Alert data:', error);
+      throw error;
+    }
+  }
+
+  // Get important alerts
+  async getImportantAlerts() {
+    try {
+      console.log("Getting important alerts from stop_events_alert table");
+      const query = `
+        SELECT * FROM stop_events_alert 
+        WHERE important_point = 1
+        ORDER BY arrival_time DESC
+      `;
+      return this.db.prepare(query).all();
+    } catch (error) {
+      console.error('Error fetching important alerts:', error);
+      return [];
     }
   }
 }

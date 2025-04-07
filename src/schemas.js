@@ -229,7 +229,7 @@ const schemas = {
             type: 'integer',
             autoIncrement: true
         },
-        platenumber: {
+        plate_number: {
             type: 'string',
             required: true
         },
@@ -237,10 +237,7 @@ const schemas = {
             type: 'datetime',
             required: true
         },
-        standing_duration: {
-            type: 'integer'
-        },
-        ignition_status: {
+        status: {
             type: 'string'
         },
         position: {

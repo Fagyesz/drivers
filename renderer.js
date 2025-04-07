@@ -615,7 +615,9 @@ function initializeImportTab() {
                 { id: 'addresses', label: 'Address Data' },
                 { id: 'vehicle_assignments', label: 'Vehicle Assignment Data' },
                 { id: 'time_records', label: 'Time Records' },
-                { id: 'stop_events_alert', label: 'Event Alerts' }
+                { id: 'stop_events_alert', label: 'Event Alerts' },
+                { id: 'alert_data', label: 'Alert Data (30min)' },
+                { id: 'sys_web', label: 'Worktime (SysWeb)' }
             ];
             
             // Find import container element
@@ -631,6 +633,17 @@ function initializeImportTab() {
                             importTypes: importTypes,
                             onImportTypeSelected: async (data) => {
                                 console.log('Import type selected:', data.type, 'with file:', data.file.name);
+                                
+                                // Special handling for SysWeb and Alert data imports
+                                if (data.type === 'sys_web') {
+                                    importSysWebExcel(data.file.path);
+                                    return;
+                                }
+                                
+                                if (data.type === 'alert_data') {
+                                    importAlertExcel(data.file.path);
+                                    return;
+                                }
                                 
                                 // Get schema fields for the selected type
                                 const schemaFields = await ipcRenderer.invoke('get-schema-fields', data.type);
@@ -1755,16 +1768,47 @@ function initializeEnhancedImport() {
     }
     
     function renderAlertsData(data) {
-        if (!importedRecordsContainer) return;
+        const container = document.getElementById('imported-data');
+        if (!container) return;
         
         if (!data || data.length === 0) {
-            importedRecordsContainer.innerHTML = '<p>No Alerts records found. Import data first.</p>';
+            container.innerHTML = '<div class="no-data">No alert data available.</div>';
             return;
         }
         
-        // For now, display a placeholder message
-        // This would be replaced with actual alert data rendering
-        importedRecordsContainer.innerHTML = '<p>Alerts data imported successfully. Functionality coming soon.</p>';
+        let html = `
+            <h3>Imported Alert Data</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Plate Number</th>
+                        <th>Arrival Time</th>
+                        <th>Standing Duration</th>
+                        <th>Position</th>
+                        <th>Important Point</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        data.forEach(record => {
+            html += `
+                <tr>
+                    <td>${record.plate_number || ''}</td>
+                    <td>${record.arrival_time || ''}</td>
+                    <td>${record.status || ''}</td>
+                    <td>${record.position || ''}</td>
+                    <td>${record.important_point ? 'Yes' : 'No'}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                </tbody>
+            </table>
+        `;
+        
+        container.innerHTML = html;
     }
     
     function renderIFleetData(data) {
@@ -1818,4 +1862,112 @@ function initializeEnhancedImport() {
     
     // Initial check for already imported data
     loadImportedData('worktime');
+}
+
+// Import SysWeb Excel file directly (from Excel parser)
+async function importSysWebExcel(filePath) {
+    console.log('Importing SysWeb Excel file directly:', filePath);
+    
+    // Show loading indicator
+    const importResults = document.getElementById('import-results');
+    if (importResults) {
+        importResults.innerHTML = '<div class="status-message loading">Importing SysWeb data...</div>';
+        importResults.style.display = 'block';
+    }
+    
+    try {
+        // Parse the Excel file
+        const result = await ipcRenderer.invoke('parse-sys-web-excel', filePath);
+        console.log('SysWeb Excel parsing result:', result);
+        
+        if (result.success) {
+            // Show success message
+            if (importResults) {
+                importResults.innerHTML = `
+                    <div class="status-message success">
+                        <h3>Import Successful</h3>
+                        <p>Successfully imported ${result.success} records.</p>
+                        ${result.errors > 0 ? `<p>Encountered ${result.errors} errors.</p>` : ''}
+                    </div>
+                `;
+            }
+            
+            // Reload the data in the relevant tables
+            loadImportedData('sys_web');
+        } else {
+            // Show error message
+            if (importResults) {
+                importResults.innerHTML = `
+                    <div class="status-message error">
+                        <h3>Import Failed</h3>
+                        <p>${result.message || 'An unknown error occurred.'}</p>
+                    </div>
+                `;
+            }
+        }
+    } catch (error) {
+        console.error('Error importing SysWeb Excel:', error);
+        if (importResults) {
+            importResults.innerHTML = `
+                <div class="status-message error">
+                    <h3>Import Error</h3>
+                    <p>${error.message || 'An unknown error occurred.'}</p>
+                </div>
+            `;
+        }
+    }
+}
+
+// Import Alert Excel file directly
+async function importAlertExcel(filePath) {
+    console.log('Importing Alert Excel file directly:', filePath);
+    
+    // Show loading indicator
+    const importResults = document.getElementById('import-results');
+    if (importResults) {
+        importResults.innerHTML = '<div class="status-message loading">Importing Alert data...</div>';
+        importResults.style.display = 'block';
+    }
+    
+    try {
+        // Parse the Excel file
+        const result = await ipcRenderer.invoke('parse-alert-excel', filePath);
+        console.log('Alert Excel parsing result:', result);
+        
+        if (result.success) {
+            // Show success message
+            if (importResults) {
+                importResults.innerHTML = `
+                    <div class="status-message success">
+                        <h3>Import Successful</h3>
+                        <p>Successfully imported ${result.success} alert records.</p>
+                        ${result.errors > 0 ? `<p>Encountered ${result.errors} errors.</p>` : ''}
+                    </div>
+                `;
+            }
+            
+            // Reload the data in the relevant tables
+            loadImportedData('stop_events_alert');
+        } else {
+            // Show error message
+            if (importResults) {
+                importResults.innerHTML = `
+                    <div class="status-message error">
+                        <h3>Import Failed</h3>
+                        <p>${result.message || 'An unknown error occurred.'}</p>
+                    </div>
+                `;
+            }
+        }
+    } catch (error) {
+        console.error('Error importing Alert Excel:', error);
+        if (importResults) {
+            importResults.innerHTML = `
+                <div class="status-message error">
+                    <h3>Import Error</h3>
+                    <p>${error.message || 'An unknown error occurred.'}</p>
+                </div>
+            `;
+        }
+    }
 } 

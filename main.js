@@ -17,6 +17,22 @@ const issueManager = require('./src/issues');
 const dbPath = path.join(app.getPath('appData'), 'driver-alerts', 'database', 'driverAlerts.db');
 const database = new DriverAlertsDatabase(dbPath);
 
+// Ensure the stop_events_alert table has the correct structure
+database.db.exec(`
+  DROP TABLE IF EXISTS stop_events_alert;
+  CREATE TABLE stop_events_alert (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plate_number TEXT NOT NULL,
+    arrival_time TEXT NOT NULL,
+    status TEXT,
+    position TEXT,
+    important_point TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+console.log('Recreated stop_events_alert table with correct structure');
+
 let mainWindow;
 
 function createWindow() {
@@ -605,14 +621,28 @@ ipcMain.handle('import-sysweb-excel', async (event, filePath) => {
 // New IPC handlers for different import types
 ipcMain.handle('import-alerts-excel', async (event, filePath) => {
   try {
-    // This is a stub for future implementation
-    // Would call an appropriate parser and database method
+    logger.info('Importing Alert Excel file', { file: filePath });
     
-    return {
-      success: true,
-      message: "Alerts import functionality is not yet implemented",
-      data: { success: 0, errors: 0, total: 0 }
-    };
+    // Use our existing parser and database import
+    const records = await excelParser.parseAlertExcel(filePath);
+    console.log(`Parsed ${records.length} Alert records`);
+    
+    if (records && records.length > 0) {
+      // Import the records to the database
+      const result = await database.importAlertData(records);
+      
+      return {
+        success: true,
+        message: `Successfully imported ${result.success} alert records. ${result.errors} errors.`,
+        data: result
+      };
+    } else {
+      return {
+        success: false,
+        message: 'No alert records found in the Excel file.',
+        data: { success: 0, errors: 0, total: 0 }
+      };
+    }
   } catch (error) {
     console.error('Error importing Alerts Excel:', error);
     return {
@@ -706,9 +736,14 @@ ipcMain.handle('get-latest-import-data', async (event) => {
   }
 });
 
-// Handler for retrieving alerts data (stub for now)
+// Handler for retrieving alerts data
 ipcMain.handle('get-alerts-data', async (event) => {
-  return [];  // Empty array as placeholder
+  try {
+    return await database.getAlerts();
+  } catch (error) {
+    console.error('Error getting alerts data:', error);
+    return [];
+  }
 });
 
 // Handler for retrieving iFleet data (stub for now)
@@ -904,4 +939,82 @@ ipcMain.on('open-help-center', (event) => {
   
   // Open the help center
   createHelpWindow();
+});
+
+// SysWeb Excel parser handler
+ipcMain.handle('parse-sys-web-excel', async (event, filePath) => {
+  logger.info('Parsing SysWeb Excel file', { file: filePath });
+  
+  try {
+    const records = await excelParser.parseSysWebExcel(filePath);
+    console.log(`Parsed ${records.length} SysWeb records`);
+    
+    if (records && records.length > 0) {
+      // Import the records to the database
+      const result = await database.importSysWebData(records);
+      
+      return {
+        success: result.success,
+        errors: result.errors,
+        total: result.total,
+        message: `Successfully imported ${result.success} records. ${result.errors} errors.`
+      };
+    } else {
+      return {
+        success: 0,
+        errors: 0,
+        total: 0,
+        message: 'No records found in the Excel file.'
+      };
+    }
+  } catch (error) {
+    console.error('Error parsing SysWeb Excel:', error);
+    logger.error('Error parsing SysWeb Excel', { error: error.message });
+    
+    return {
+      success: 0,
+      errors: 1,
+      total: 0,
+      message: `Error parsing Excel: ${error.message}`
+    };
+  }
+});
+
+// Alert Excel parser handler
+ipcMain.handle('parse-alert-excel', async (event, filePath) => {
+  logger.info('Parsing Alert Excel file', { file: filePath });
+  
+  try {
+    const records = await excelParser.parseAlertExcel(filePath);
+    console.log(`Parsed ${records.length} Alert records`);
+    
+    if (records && records.length > 0) {
+      // Import the records to the database
+      const result = await database.importAlertData(records);
+      
+      return {
+        success: result.success,
+        errors: result.errors,
+        total: result.total,
+        message: `Successfully imported ${result.success} alert records. ${result.errors} errors.`
+      };
+    } else {
+      return {
+        success: 0,
+        errors: 0,
+        total: 0,
+        message: 'No alert records found in the Excel file.'
+      };
+    }
+  } catch (error) {
+    console.error('Error parsing Alert Excel:', error);
+    logger.error('Error parsing Alert Excel', { error: error.message });
+    
+    return {
+      success: 0,
+      errors: 1,
+      total: 0,
+      message: `Error parsing Excel: ${error.message}`
+    };
+  }
 }); 

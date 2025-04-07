@@ -697,7 +697,53 @@ function initializeImport() {
     
     // Function to display Alerts data from the database
     async function displayAlertsImportedData() {
-        importedRecords.innerHTML = '<p>Alerts data display not implemented yet.</p>';
+        try {
+            const { ipcRenderer } = require('electron');
+            const alertsData = await ipcRenderer.invoke('get-alerts-data');
+            
+            if (!alertsData || alertsData.length === 0) {
+                importedRecords.innerHTML = '<p>No alert data available. Import data first.</p>';
+                return;
+            }
+            
+            let html = `
+                <div class="data-table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Plate Number</th>
+                                <th>Arrival Time</th>
+                                <th>Standing Duration</th>
+                                <th>Position</th>
+                                <th>Important Point</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            alertsData.forEach(record => {
+                html += `
+                    <tr>
+                        <td>${record.plate_number || ''}</td>
+                        <td>${record.arrival_time || ''}</td>
+                        <td>${record.status || ''}</td>
+                        <td>${record.position || ''}</td>
+                        <td>${record.important_point || ''}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            importedRecords.innerHTML = html;
+        } catch (error) {
+            console.error('Error displaying Alerts data:', error);
+            importedRecords.innerHTML = `<p class="error">Error displaying data: ${error.message}</p>`;
+        }
     }
     
     // Function to display iFleet data from the database
