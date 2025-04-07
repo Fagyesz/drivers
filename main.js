@@ -39,59 +39,6 @@ database.db.exec(`
 `);
 console.log('Recreated stop_events_alert table with correct structure');
 
-// Insert demo alert data
-try {
-  database.db.exec(`
-    -- Insert demo alert data
-    INSERT INTO stop_events_alert 
-      (plate_number, arrival_time, status, position, important_point, supervised)
-    VALUES 
-      ('ABC-123', '2023-05-15 10:30:00', '35 min', 'Downtown Helsinki', 'ACME Inc.', 'pending'),
-      ('XYZ-789', '2023-05-15 14:15:00', '42 min', 'Espoo Mall', 'TechCorp', 'justified'),
-      ('DEF-456', '2023-05-16 09:45:00', '38 min', 'Vantaa Airport', 'Global Logistics', 'unjustified'),
-      ('MNO-567', '2023-05-17 11:20:00', '45 min', 'Helsinki Central', 'City Transport', 'pending')
-  `);
-  console.log('Inserted demo alert data');
-  
-  // Verify alerts can be retrieved
-  setTimeout(async () => {
-    try {
-      console.log('------- ALERT TESTING -------');
-      // Log available methods on database object
-      console.log('Available database methods:', Object.getOwnPropertyNames(database.__proto__));
-      
-      // Query directly using the database connection
-      const results = database.db.prepare('SELECT * FROM stop_events_alert').all();
-      console.log(`Direct DB query: Retrieved ${results.length} alerts from database`);
-      if (results.length > 0) {
-        console.log('First alert:', JSON.stringify(results[0]));
-      }
-      
-      // Test the getAlerts method
-      console.log('Testing getAlerts method...');
-      try {
-        const alertsResults = await database.getAlerts();
-        if (alertsResults) {
-          console.log(`getAlerts method: Retrieved ${alertsResults.length} alerts from database`);
-          if (alertsResults.length > 0) {
-            console.log('First alert from getAlerts:', JSON.stringify(alertsResults[0]));
-          }
-        } else {
-          console.log('getAlerts method returned undefined');
-        }
-      } catch (methodError) {
-        console.error('Error calling getAlerts method:', methodError);
-      }
-      
-      console.log('------- END ALERT TESTING -------');
-    } catch (error) {
-      console.error('Error testing direct alert retrieval:', error);
-    }
-  }, 2000); // Wait 2 seconds before testing
-} catch (error) {
-  console.error('Error inserting demo alert data:', error);
-}
-
 let mainWindow;
 
 function createWindow() {
@@ -523,19 +470,38 @@ ipcMain.handle('get-round-by-id', async (event, id) => {
 // Alerts operations
 ipcMain.handle('get-alerts', async () => {
   try {
-    console.log("Direct handler: Getting alerts from database");
     // Use direct database query instead of the potentially problematic method
     const results = database.db.prepare('SELECT * FROM stop_events_alert ORDER BY arrival_time DESC').all() || [];
-    console.log(`Direct handler: Retrieved ${results.length} alerts`);
-    
-    if (results.length > 0) {
-      console.log("First alert being returned:", JSON.stringify(results[0]));
-    }
-    
     return results;
   } catch (error) {
     console.error('Error getting alerts:', error);
     return [];
+  }
+});
+
+// Handler for updating alert supervised status
+ipcMain.handle('update-alert-supervised', async (event, alertId, status) => {
+  try {
+    // Direct database update to avoid any potential method issues
+    const query = `
+      UPDATE stop_events_alert 
+      SET supervised = ?, 
+          updated_at = datetime('now') 
+      WHERE id = ?
+    `;
+    
+    const result = database.db.prepare(query).run(status, alertId);
+    
+    return { 
+      success: true, 
+      message: `Successfully updated supervised status to ${status}` 
+    };
+  } catch (error) {
+    console.error('Error updating alert supervised status:', error);
+    return { 
+      success: false, 
+      message: `Error updating alert supervised status: ${error.message}` 
+    };
   }
 });
 
@@ -840,7 +806,6 @@ ipcMain.handle('get-alerts-data', async (event) => {
   try {
     // Use the getAlerts method instead of getAlerts which was fetching from the wrong table
     const alertData = await database.db.prepare('SELECT * FROM stop_events_alert ORDER BY arrival_time DESC').all();
-    console.log(`Retrieved ${alertData.length} records from stop_events_alert table`);
     return alertData;
   } catch (error) {
     console.error('Error getting alerts data:', error);
@@ -865,18 +830,6 @@ ipcMain.handle('get-sysweb-data', async (event) => {
   } catch (error) {
     console.error('Error getting SysWeb data:', error);
     return [];
-  }
-});
-
-// Insert demo data for testing
-ipcMain.handle('insert-demo-data', async () => {
-  try {
-    console.log("Inserting demo data...");
-    const result = await database.insertDemoData();
-    return { success: result };
-  } catch (error) {
-    console.error('Error inserting demo data:', error);
-    return { success: false, error: error.message };
   }
 });
 

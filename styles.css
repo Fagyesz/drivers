@@ -279,10 +279,53 @@ h1, h2, h3, h4, h5, h6 {
   margin-bottom: 0.5rem;
 }
 
+.card-status {
+  margin-bottom: 10px;
+  text-align: right;
+}
+
 .card-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 15px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 15px;
+}
+
+.action-btn {
+  flex: 1;
+  display: inline-block;
+  text-align: center;
+  padding: 8px 12px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-justify {
+  background-color: var(--success-color);
+  color: white;
+  border: none;
+}
+
+.btn-justify:hover {
+  background-color: #218838;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-unjustify {
+  background-color: var(--error-color);
+  color: white;
+  border: none;
+}
+
+.btn-unjustify:hover {
+  background-color: #c82333;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
 /* Vehicle cards specific */
@@ -316,8 +359,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .alert-card.ignored {
-  border-left-color: var(--text-light);
-  opacity: 0.6;
+  border-left-color: var(--error-color);
+  opacity: 0.85;
+  background-color: #ffebee; /* Light red background */
 }
 
 /* Buttons */
@@ -1196,9 +1240,51 @@ h1, h2, h3, h4, h5, h6 {
 .badge-danger {
   background-color: var(--error-color);
   color: white;
+  font-weight: bold;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .badge-warning {
   background-color: var(--warning-color);
   color: #212529;
+}
+
+/* Filter controls */
+.filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+  padding: 12px;
+  background-color: var(--card-background);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+}
+
+.filter-controls label {
+  font-weight: 500;
+  color: var(--text-color);
+  white-space: nowrap;
+}
+
+.filter-controls .select-dropdown {
+  flex: 1;
+  max-width: 240px;
+  padding: 8px 12px;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+  background-color: white;
+  color: var(--text-color);
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.filter-controls .select-dropdown:hover {
+  border-color: var(--primary-color);
+}
+
+.filter-controls .select-dropdown:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(0, 120, 215, 0.1);
 } 
