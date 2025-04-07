@@ -391,8 +391,8 @@ class ExcelParser {
                 // Find the data headers row with "Dátum", "Terv", "Tény", etc.
                 let headerRow = -1;
                 let dateCol = -1;
-                let planedCol = -1;
-                let actualCol = -1;
+                let plannedShiftCol = -1;
+                let actualShiftCol = -1;
                 let checkInCol = -1;
                 let checkOutCol = -1;
                 let workedTimeCol = -1;
@@ -415,10 +415,10 @@ class ExcelParser {
                             foundDatumHeader = true;
                             console.log(`Found 'dátum' at section row ${i}, col ${j}`);
                         } else if (cellValue === 'terv') {
-                            planedCol = j;
+                            plannedShiftCol = j;
                             console.log(`Found 'terv' at section row ${i}, col ${j}`);
                         } else if (cellValue === 'tény') {
-                            actualCol = j;
+                            actualShiftCol = j;
                             console.log(`Found 'tény' at section row ${i}, col ${j}`);
                         } else if (cellValue === 'ledolg.' || cellValue.includes('ledolg')) {
                             workedTimeCol = j;
@@ -493,9 +493,29 @@ class ExcelParser {
                 // Process rows of data for this person
                 const sectionRecords = [];
                 
-                // Start from headerRow + (checkInCol >= 0 ? 3 : 1) to skip header and potential BE/KI row
-                let dataStartRow = headerRow + (checkInCol >= 0 ? 3 : 1);
-                console.log(`Starting to process data from section row ${dataStartRow}`);
+                // Previously we were skipping too many rows after the header
+                // let dataStartRow = headerRow + (checkInCol >= 0 ? 3 : 1);
+                // Adjusted logic to ensure we don't miss the first days of the month
+                let dataStartRow = headerRow + 1;
+
+                // Add debugging to log where we're starting to read data
+                console.log(`[ExcelParser] Starting to read data from row ${dataStartRow}`);
+
+                // Scan for the row containing the first date
+                for (let i = dataStartRow; i < sectionData.length; i++) {
+                    const row = sectionData[i];
+                    if (row && row[dateCol] && typeof row[dateCol] === 'string') {
+                        // Check if this row contains a date format (like 2024.07.01 or just 07.01)
+                        if (/^\d{4}\.\d{2}\.\d{2}$|^\d{2}\.\d{2}$/.test(row[dateCol])) {
+                            dataStartRow = i;
+                            console.log(`[ExcelParser] Found first date row at ${dataStartRow}: ${row[dateCol]}`);
+                            break;
+                        }
+                    }
+                }
+                
+                // Now create the records
+                const records = [];
                 
                 // Process until we hit the end of the section or "Összesen" row
                 while (dataStartRow < sectionData.length) {
@@ -534,6 +554,32 @@ class ExcelParser {
                         console.log(`No date found at row ${dataStartRow}, skipping`);
                         dataStartRow++;
                         continue;
+                    }
+                    
+                    // Ensure early month days (like 03.01, 03.02) are properly processed
+                    console.log(`Processing date cell: "${dateCell}" at row ${dataStartRow}`);
+                    
+                    // Make sure we handle Hungarian date formats (potentially with periods)
+                    let formattedDate = dateCell;
+                    if (typeof dateCell === 'string') {
+                        // Handle potential period-separated dates (03.01 -> 2025-03-01)
+                        if (dateCell.includes('.')) {
+                            const parts = dateCell.split('.');
+                            if (parts.length >= 2) {
+                                // Ensure we have year, month, day
+                                let year = parts[0].trim();
+                                const month = parts[1].trim().padStart(2, '0');
+                                let day = parts.length > 2 ? parts[2].trim().padStart(2, '0') : '01';
+                                
+                                // If year is just 2 digits (like "25"), prepend "20"
+                                if (year.length === 2) {
+                                    year = `20${year}`;
+                                }
+                                
+                                formattedDate = `${year}-${month}-${day}`;
+                                console.log(`Reformatted date from "${dateCell}" to "${formattedDate}"`);
+                            }
+                        }
                     }
                     
                     // Extract check-in and check-out times from their respective column ranges
@@ -631,9 +677,9 @@ class ExcelParser {
                         name: employeeInfo.name,
                         jobtitle: employeeInfo.jobtitle,
                         costcenter: employeeInfo.costcenter,
-                        date: dateCell,
-                        planedshift: planedCol >= 0 ? (row[planedCol] || '') : '',
-                        actual: actualCol >= 0 ? (row[actualCol] || '') : '',
+                        date: formattedDate,
+                        planedshift: plannedShiftCol >= 0 ? (row[plannedShiftCol] || '') : '',
+                        actual: actualShiftCol >= 0 ? (row[actualShiftCol] || '') : '',
                         check_in: checkInTime || '',
                         check_out: checkOutTime || '',
                         workedTime: workedTime || ''
