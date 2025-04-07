@@ -133,18 +133,49 @@ class Logger {
         }
         
         try {
-            // Format log entry
-            let logEntry = `[${new Date().toISOString()}] [${level.toUpperCase()}] ${message}`;
+            // Format log entry with timestamp, level in fixed width, and message
+            let logEntry = `[${new Date().toISOString()}] [${level.toUpperCase().padEnd(5)}] ${message}`;
             
-            // Add data if provided
+            // Format error objects better
+            if (data && data.error) {
+                // If error is an Error object with stack
+                if (data.error instanceof Error) {
+                    data = {
+                        ...data,
+                        error: {
+                            message: data.error.message,
+                            stack: data.error.stack
+                        }
+                    };
+                } else if (typeof data.error === 'string') {
+                    // Simple string error
+                    data = {
+                        ...data,
+                        error: { message: data.error }
+                    };
+                }
+                
+                // For ERROR level, make the error more prominent
+                if (level === 'error') {
+                    logEntry += `\n  ERROR: ${typeof data.error === 'object' ? data.error.message : data.error}`;
+                    if (data.error.stack) {
+                        logEntry += `\n  STACK: ${data.error.stack.split('\n').join('\n         ')}`;
+                    }
+                }
+            }
+            
+            // Add structured data if provided
             if (data) {
                 let dataStr = '';
                 try {
-                    dataStr = JSON.stringify(data);
+                    dataStr = JSON.stringify(data, null, level === 'error' ? 2 : 0);
                 } catch (e) {
                     dataStr = `[Cannot stringify: ${e.message}]`;
                 }
-                logEntry += ` ${dataStr}`;
+                
+                if (level !== 'error' || !data.error) {
+                    logEntry += ` ${dataStr}`;
+                }
             }
             
             // Add newline
@@ -158,7 +189,11 @@ class Logger {
             
             // Also log to console if in development mode
             if (process.env.NODE_ENV === 'development' || process.argv.includes('--dev')) {
-                console[level](message, data || '');
+                if (level === 'error') {
+                    console.error(message, data ? data.error || data : '');
+                } else {
+                    console[level](message, data || '');
+                }
             }
         } catch (error) {
             console.error('Error writing log entry:', error);
@@ -168,9 +203,21 @@ class Logger {
     /**
      * Log an error message
      * @param {string} message - Log message
-     * @param {Object} data - Additional data to log
+     * @param {Object|Error} data - Error object or additional data to log
      */
     error(message, data = null) {
+        // Convert Error objects directly passed to structured format
+        if (data instanceof Error) {
+            data = { error: data };
+        } else if (typeof data === 'string') {
+            data = { error: data };
+        } else if (!data) {
+            data = { error: 'Unknown error' };
+        } else if (!data.error) {
+            // If data is an object but doesn't have an error property
+            data = { ...data, error: 'Error details in data' };
+        }
+        
         this.log('error', message, data);
     }
     

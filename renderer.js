@@ -15,11 +15,65 @@ const rendererLogger = {
     console.warn(msg, data || '');
     ipcRenderer.invoke('log-message', { level: 'warn', message: msg, data });
   },
-  error: (msg, data) => {
-    console.error(msg, data || '');
-    ipcRenderer.invoke('log-message', { level: 'error', message: msg, data });
+  error: (msg, error, contextData = {}) => {
+    // Handle different error formats
+    let errorObj = error;
+    
+    if (typeof error === 'string') {
+      errorObj = new Error(error);
+    } else if (error && typeof error === 'object') {
+      if (error instanceof Error) {
+        errorObj = error;
+      } else if (error.message) {
+        errorObj = new Error(error.message);
+        if (error.stack) errorObj.stack = error.stack;
+      } else if (error.error) {
+        // Handle { error: ... } format
+        if (typeof error.error === 'string') {
+          errorObj = new Error(error.error);
+        } else if (error.error instanceof Error) {
+          errorObj = error.error;
+        } else {
+          errorObj = new Error(JSON.stringify(error.error));
+        }
+        // Merge other context data
+        contextData = { ...contextData, ...error, error: undefined };
+      } else {
+        // For generic objects, stringify them
+        errorObj = new Error(JSON.stringify(error));
+      }
+    }
+    
+    // Log to console with stack trace
+    console.error(msg, errorObj);
+    
+    // Send to main process with structured format
+    ipcRenderer.invoke('log-message', { 
+      level: 'error', 
+      message: msg, 
+      data: { 
+        ...contextData,
+        error: errorObj
+      }
+    });
   }
 };
+
+// Add global error handler
+window.addEventListener('error', (event) => {
+  rendererLogger.error('Uncaught exception', event.error || event.message, {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno
+  });
+});
+
+// Also handle promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+  rendererLogger.error('Unhandled promise rejection', event.reason || 'Unknown reason', {
+    promise: event.promise ? 'Promise present' : 'No promise reference'
+  });
+});
 
 rendererLogger.info('Renderer started');
 
@@ -543,10 +597,17 @@ function initializeImport() {
                         displayImportedData(currentImportType);
                     }
                 } else {
-                    showImportStatus(`Parse failed: ${result ? result.message : 'Unknown error'}`, 'error');
+                    const errorMessage = `Parse failed: ${result ? result.message : 'Unknown error'}`;
+                    rendererLogger.error('Excel parsing failed', result ? 
+                        (result.error || result.message || 'Unknown error') : 
+                        'No result returned from parser');
+                    showImportStatus(errorMessage, 'error');
                 }
             } catch (error) {
-                rendererLogger.error('Error processing data', { error: error.message });
+                rendererLogger.error('Error processing data', error, {
+                    importType: currentImportType,
+                    filePath: excelFilePath
+                });
                 showImportStatus(`Error processing data: ${error.message}`, 'error');
                 if (importLoading) importLoading.style.display = 'none';
             }

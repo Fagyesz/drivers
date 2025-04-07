@@ -245,14 +245,14 @@ class ExcelParser {
             const resolvedData = this.resolveMergedCells(worksheet);
             logger.info(`Resolved data has ${resolvedData.length} rows`);
             
+            // Detailed logging for the first few rows to help with debugging
+            for (let i = 0; i < Math.min(3, resolvedData.length); i++) {
+                logger.debug(`Debug Row ${i}:`, JSON.stringify(resolvedData[i]));
+            }
+            
             // Find all person sections in the file
             logger.info('Searching for person sections...');
             const sectionIndices = [];
-            
-            // Detailed logging for the first few rows to help with debugging
-            for (let i = 0; i < Math.min(20, resolvedData.length); i++) {
-                logger.info(`Debug Row ${i}:`, JSON.stringify(resolvedData[i]));
-            }
             
             // Look for "Jelentési ív" which signals the start of a person section
             for (let i = 0; i < resolvedData.length; i++) {
@@ -775,8 +775,8 @@ class ExcelParser {
             logger.info(`Resolved data has ${resolvedData.length} rows`);
             
             // Detailed logging for the first few rows to help with debugging
-            for (let i = 0; i < Math.min(10, resolvedData.length); i++) {
-                logger.info(`Debug Row ${i}:`, JSON.stringify(resolvedData[i]));
+            for (let i = 0; i < Math.min(3, resolvedData.length); i++) {
+                logger.debug(`Debug Row ${i}:`, JSON.stringify(resolvedData[i]));
             }
             
             // Find the header row that contains the column titles

@@ -3,9 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
     <title>Help - Driver Alerts</title>
     <link rel="stylesheet" href="../styles.css">
+    <style>
+        /* Log syntax highlighting styles */
+        .logs-output {
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+            padding: 10px;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 4px;
+            line-height: 1.4;
+            overflow-y: auto;
+            height: calc(100vh - 240px);
+            font-size: 12px;
+        }
+        
+        /* Make log-level styling stronger and more visible */
+        .error-line {
+            color: #ff4444 !important;
+            font-weight: bold;
+            background-color: rgba(255, 0, 0, 0.1);
+            display: block;
+            border-left: 3px solid #ff4444;
+            padding-left: 5px;
+        }
+        
+        .warn-line {
+            color: #ffbb00 !important;
+            font-weight: bold;
+            background-color: rgba(255, 204, 0, 0.15);
+            display: block;
+            border-left: 3px solid #ffbb00;
+            padding-left: 5px;
+        }
+        
+        .info-line {
+            color: #77aaff !important;
+            font-weight: bold;
+            background-color: rgba(68, 136, 255, 0.1);
+            display: block;
+            border-left: 3px solid #77aaff;
+            padding-left: 5px;
+        }
+        
+        .debug-line {
+            color: #aaaaaa !important;
+            display: block;
+            border-left: 3px solid #aaaaaa;
+            padding-left: 5px;
+        }
+
+        /* Remove double scrollbar */
+        .content-area {
+            overflow: hidden;
+        }
+
+        .logs-container {
+            height: auto;
+            overflow: hidden;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -99,6 +160,7 @@
                             <button id="refresh-logs-btn" class="button">Refresh</button>
                             <button id="clear-logs-btn" class="button secondary">Clear</button>
                             <button id="export-logs-btn" class="button">Export</button>
+                            <button id="test-warn-btn" class="button">Test Warning</button>
                         </div>
                     </div>
                     
@@ -169,7 +231,9 @@
                                 
                                 // Load logs if switching to logs tab
                                 if (tabId === 'logs-tab') {
-                                    loadLogs();
+                                    // Force a complete refresh of logs with new styling
+                                    console.log('Loading logs with enhanced error styling');
+                                    loadLogs(true);
                                 }
                             }
                         });
@@ -231,6 +295,31 @@
                     });
                 }
                 
+                // Add test warnings button
+                const testWarnBtn = document.getElementById('test-warn-btn');
+                if (testWarnBtn) {
+                    testWarnBtn.addEventListener('click', async function() {
+                        console.log('Test warning button clicked');
+                        try {
+                            // Generate test log entries of each type directly
+                            const testLogs = [
+                                `[${new Date().toISOString()}] [ERROR] TEST ERROR - This is a test error message`,
+                                `[${new Date().toISOString()}] [WARN] TEST WARNING - This is a test warning message`,
+                                `[${new Date().toISOString()}] [INFO] TEST INFO - This is a test info message`,
+                                `[${new Date().toISOString()}] [DEBUG] TEST DEBUG - This is a test debug message`
+                            ].join('\n');
+                            
+                            // Prepend to current logs
+                            currentLogs = testLogs + '\n' + (currentLogs || '');
+                            
+                            // Force refresh filtering and highlighting
+                            filterLogs();
+                        } catch (error) {
+                            showError('Error generating test logs: ' + error.message);
+                        }
+                    });
+                }
+                
                 // Handle level filter change
                 if (logLevelFilter) {
                     logLevelFilter.addEventListener('change', function() {
@@ -248,21 +337,29 @@
                 }
                 
                 // Function to load logs
-                async function loadLogs() {
+                async function loadLogs(force = false) {
                     console.log('Loading logs...');
                     try {
                         if (logsOutput) logsOutput.textContent = 'Loading logs...';
-                        currentLogs = await ipcRenderer.invoke('get-all-logs');
+                        
+                        // Only fetch new logs from main process if forced or no current logs
+                        if (force || !currentLogs) {
+                            currentLogs = await ipcRenderer.invoke('get-all-logs');
+                            console.log('Logs loaded, length:', currentLogs.length);
+                        }
                         
                         if (!currentLogs || currentLogs.length === 0) {
                             if (logsOutput) logsOutput.textContent = 'No logs found.';
                             return;
                         }
                         
+                        // Force refresh filtering and highlighting
                         filterLogs();
                     } catch (error) {
                         console.error('Error loading logs:', error);
-                        showError('Error loading logs: ' + error.message);
+                        if (logsOutput) {
+                            logsOutput.innerHTML = `<span style="color:red;font-weight:bold;">Error loading logs: ${error.message}</span>`;
+                        }
                     }
                 }
                 
@@ -274,30 +371,38 @@
                     const level = logLevelFilter.value;
                     const searchText = logSearch ? logSearch.value.toLowerCase() : '';
                     
+                    console.log('Applying filter:', level);
+                    
                     // Start with all logs
                     let logs = currentLogs;
                     
-                    // Filter by level
+                    // Filter by level with exact pattern matching
                     if (level !== 'all') {
                         const lines = logs.split('\n');
                         const filteredLines = lines.filter(line => {
-                            const lowerLine = line.toLowerCase();
+                            if (!line.trim()) return false;
+                            
+                            // Use same pattern matching as highlighting
+                            const hasError = line.match(/\[ERROR\]/);
+                            const hasWarn = line.match(/\[WARN\]/);
+                            const hasInfo = line.match(/\[INFO ?]/);  // Match [INFO] or [INFO ]
+                            const hasDebug = line.match(/\[DEBUG\]/);
                             
                             if (level === 'error') {
-                                return lowerLine.includes('[error]');
+                                return hasError;
                             } else if (level === 'warn') {
-                                return lowerLine.includes('[error]') || lowerLine.includes('[warn]');
+                                return hasError || hasWarn;
                             } else if (level === 'info') {
-                                return lowerLine.includes('[error]') || lowerLine.includes('[warn]') || lowerLine.includes('[info]');
+                                return hasError || hasWarn || hasInfo;
                             } else if (level === 'debug') {
-                                return lowerLine.includes('[error]') || lowerLine.includes('[warn]') || 
-                                      lowerLine.includes('[info]') || lowerLine.includes('[debug]');
+                                return hasError || hasWarn || hasInfo || hasDebug;
                             }
                             
                             return true;
                         });
                         
                         logs = filteredLines.join('\n');
+                        console.log(`Filtered ${level} logs, ${filteredLines.length} lines remaining`);
                     }
                     
                     // Filter by search text
@@ -322,17 +427,35 @@
                     }
                 }
                 
-                // Function to highlight log syntax
+                // Function to highlight log syntax with improved INFO detection
                 function highlightLogSyntax(logText) {
                     if (!logText) return '';
                     
-                    return logText
-                        .replace(/\[ERROR\]/gi, '<span class="log-error">[ERROR]</span>')
-                        .replace(/\[WARN\]/gi, '<span class="log-warn">[WARN]</span>')
-                        .replace(/\[INFO\]/gi, '<span class="log-info">[INFO]</span>')
-                        .replace(/\[DEBUG\]/gi, '<span class="log-debug">[DEBUG]</span>')
-                        .replace(/\[(.*?)\]/g, '<span class="log-timestamp">[$1]</span>')
-                        .replace(/{.*}/g, match => `<span class="log-json">${match}</span>`);
+                    // Split by lines and add styling
+                    const lines = logText.split('\n');
+                    const styledLines = [];
+                    
+                    for (const line of lines) {
+                        if (!line.trim()) {
+                            styledLines.push('');
+                            continue;
+                        }
+                        
+                        // Match exact format seen in logs - note the space after INFO
+                        if (line.match(/\[ERROR\]/)) {
+                            styledLines.push(`<div class="error-line">${line}</div>`);
+                        } else if (line.match(/\[WARN\]/)) {
+                            styledLines.push(`<div class="warn-line">${line}</div>`);
+                        } else if (line.match(/\[INFO ?]/)) {  // Match [INFO] or [INFO ]
+                            styledLines.push(`<div class="info-line">${line}</div>`);
+                        } else if (line.match(/\[DEBUG\]/)) {
+                            styledLines.push(`<div class="debug-line">${line}</div>`);
+                        } else {
+                            styledLines.push(`<div>${line}</div>`);
+                        }
+                    }
+                    
+                    return styledLines.join('');
                 }
                 
                 // Function to show error message
@@ -361,7 +484,7 @@
                         }
                     }, 3000);
                 }
-
+                
                 // Listen for messages from main process
                 if (ipcRenderer) {
                     ipcRenderer.on('switch-to-logs-tab', () => {
@@ -396,4 +519,4 @@
         };
     </script>
 </body>
-</html> 
+</html>

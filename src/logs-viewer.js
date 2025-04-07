@@ -37,23 +37,80 @@ try {
             const exportLogsBtn = document.getElementById('export-logs-btn');
             const logLevelFilter = document.getElementById('log-level-filter');
             const logSearch = document.getElementById('log-search');
+            const hideDebugRows = document.getElementById('hide-debug-rows');
             
             console.log('UI elements found:',
                 'logsOutput:', !!logsOutput,
                 'refreshLogsBtn:', !!refreshLogsBtn,
                 'backBtn:', !!backBtn,
                 'clearLogsBtn:', !!clearLogsBtn,
-                'exportLogsBtn:', !!exportLogsBtn
+                'exportLogsBtn:', !!exportLogsBtn,
+                'hideDebugRows:', !!hideDebugRows
             );
+            
+            // Add new button listeners for the updated HTML
+            const refreshButton = document.getElementById('refresh-button');
+            const backButton = document.getElementById('back-button');
+            
+            if (refreshButton) {
+                refreshButton.addEventListener('click', function() {
+                    console.log('New refresh button clicked');
+                    loadLogs();
+                });
+                console.log('New refresh button event listener attached');
+            }
+            
+            if (backButton) {
+                backButton.addEventListener('click', function() {
+                    console.log('New back button clicked');
+                    if (window.electron) {
+                        window.electron.goBack();
+                    } else {
+                        window.history.back();
+                    }
+                });
+                console.log('New back button event listener attached');
+            }
             
             let currentLogs = '';
             let filteredLogs = '';
+            
+            // Handle level filter change
+            if (logLevelFilter) {
+                logLevelFilter.addEventListener('change', function() {
+                    console.log('Log level filter changed');
+                    filterLogs();
+                });
+                console.log('Level filter event listener attached');
+            }
+            
+            // Handle search input
+            if (logSearch) {
+                logSearch.addEventListener('input', function() {
+                    console.log('Log search input changed');
+                    filterLogs();
+                });
+                console.log('Search input event listener attached');
+            }
+            
+            // Handle hide debug rows checkbox
+            if (hideDebugRows) {
+                hideDebugRows.addEventListener('change', function() {
+                    console.log('Hide debug rows changed:', hideDebugRows.checked);
+                    filterLogs();
+                });
+                console.log('Hide debug rows event listener attached');
+            }
             
             // Handle back button click - should return to FAQ
             if (backBtn) {
                 backBtn.addEventListener('click', function() {
                     console.log('Back button clicked in logs viewer');
-                    ipcRenderer.send('close-logs-viewer');
+                    if (window.electron) {
+                        window.electron.goBack();
+                    } else {
+                        window.history.back();
+                    }
                 });
                 console.log('Back button event listener attached in logs viewer');
             }
@@ -103,26 +160,26 @@ try {
                 console.log('Export logs button event listener attached');
             }
             
-            // Handle level filter change
-            if (logLevelFilter) {
-                logLevelFilter.addEventListener('change', function() {
-                    console.log('Log level filter changed');
-                    filterLogs();
-                });
-                console.log('Level filter event listener attached');
-            }
-            
-            // Handle search input
-            if (logSearch) {
-                logSearch.addEventListener('input', function() {
-                    console.log('Log search input changed');
-                    filterLogs();
-                });
-                console.log('Search input event listener attached');
-            }
-            
             // Load logs on page load
             loadLogs();
+            
+            // Add force reload capability
+            window.forceReload = function() {
+                console.log('Force reloading page...');
+                // Clear cache and reload
+                if (electron.webFrame) {
+                    electron.webFrame.clearCache();
+                }
+                location.reload(true);
+            };
+            
+            // Add keyboard shortcut for force reload (Ctrl+R or Cmd+R)
+            document.addEventListener('keydown', function(event) {
+                if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
+                    event.preventDefault();
+                    window.forceReload();
+                }
+            });
             
             // Function to load logs
             async function loadLogs() {
@@ -150,9 +207,23 @@ try {
                 
                 const level = logLevelFilter.value;
                 const searchText = logSearch ? logSearch.value.toLowerCase() : '';
+                const shouldHideDebugRows = hideDebugRows ? hideDebugRows.checked : false;
+                
+                console.log('Applying filters:', { level, searchText, shouldHideDebugRows });
                 
                 // Start with all logs
                 let logs = currentLogs;
+                
+                // First filter out debug rows if enabled - do this first to reduce the amount of data to process
+                if (shouldHideDebugRows) {
+                    const lines = logs.split('\n');
+                    const filteredLines = lines.filter(line => 
+                        !line.includes('Debug Row')
+                    );
+                    
+                    logs = filteredLines.join('\n');
+                    console.log(`Filtered out ${lines.length - filteredLines.length} debug rows`);
+                }
                 
                 // Filter by level
                 if (level !== 'all') {
@@ -175,6 +246,7 @@ try {
                     });
                     
                     logs = filteredLines.join('\n');
+                    console.log(`Applied level filter "${level}": ${filteredLines.length} lines remaining`);
                 }
                 
                 // Filter by search text
@@ -185,6 +257,7 @@ try {
                     );
                     
                     logs = filteredLines.join('\n');
+                    console.log(`Applied search filter "${searchText}": ${filteredLines.length} lines remaining`);
                 }
                 
                 // Update filtered logs and display
@@ -203,13 +276,76 @@ try {
             function highlightLogSyntax(logText) {
                 if (!logText) return '';
                 
-                return logText
-                    .replace(/\[ERROR\]/gi, '<span class="log-error">[ERROR]</span>')
-                    .replace(/\[WARN\]/gi, '<span class="log-warn">[WARN]</span>')
-                    .replace(/\[INFO\]/gi, '<span class="log-info">[INFO]</span>')
-                    .replace(/\[DEBUG\]/gi, '<span class="log-debug">[DEBUG]</span>')
-                    .replace(/\[(.*?)\]/g, '<span class="log-timestamp">[$1]</span>')
-                    .replace(/{.*}/g, match => `<span class="log-json">${match}</span>`);
+                // First, split the log into lines to handle multi-line error logs
+                const lines = logText.split('\n');
+                
+                const highlightedLines = lines.map(line => {
+                    let highlightedLine = line
+                        // Highlight log levels with different colors
+                        .replace(/\[ERROR\]/gi, '<span class="log-error">[ERROR]</span>')
+                        .replace(/\[WARN\]/gi, '<span class="log-warn">[WARN]</span>')
+                        .replace(/\[INFO\]/gi, '<span class="log-info">[INFO]</span>')
+                        .replace(/\[DEBUG\]/gi, '<span class="log-debug">[DEBUG]</span>')
+                        // Highlight timestamps
+                        .replace(/\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z\]/g, match => `<span class="log-timestamp">${match}</span>`)
+                        // Highlight other brackets
+                        .replace(/\[(.*?)\]/g, '<span class="log-bracket">[$1]</span>');
+                    
+                    // Highlight error specific lines (improved detection)
+                    if (line.toLowerCase().includes('[error]') || 
+                        line.includes('ERROR:') || 
+                        line.includes('error:') || 
+                        line.includes('failed') ||
+                        line.includes('exception') ||
+                        line.includes('failed') ||
+                        line.includes('Invalid')) {
+                        return `<span class="log-error-line">${highlightedLine}</span>`;
+                    }
+                    // Highlight stack trace lines
+                    else if (line.includes('STACK:') || line.match(/at .+\(.+:\d+:\d+\)/) || line.includes('Object.error')) {
+                        return `<span class="log-stack">${highlightedLine}</span>`;
+                    }
+                    
+                    return highlightedLine;
+                });
+                
+                // Join the lines back with line breaks
+                let highlightedText = highlightedLines.join('<br>');
+                
+                // Now handle JSON objects (which might span multiple lines)
+                // This is a simple approach - a more complex parser would be needed for nested objects
+                highlightedText = highlightedText.replace(/{.+}/gs, match => {
+                    try {
+                        // Try to parse and pretty print the JSON
+                        const jsonObj = JSON.parse(match);
+                        const prettyJson = JSON.stringify(jsonObj, null, 2)
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                            .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, match => {
+                                let cls = 'log-json-number';
+                                if (/^"/.test(match)) {
+                                    if (/:$/.test(match)) {
+                                        cls = 'log-json-key';
+                                    } else {
+                                        cls = 'log-json-string';
+                                    }
+                                } else if (/true|false/.test(match)) {
+                                    cls = 'log-json-boolean';
+                                } else if (/null/.test(match)) {
+                                    cls = 'log-json-null';
+                                }
+                                return `<span class="${cls}">${match}</span>`;
+                            });
+                        
+                        return `<div class="log-json">${prettyJson.replace(/\n/g, '<br>').replace(/\s{2}/g, '&nbsp;&nbsp;')}</div>`;
+                    } catch (e) {
+                        // If can't parse as JSON, just highlight the whole thing
+                        return `<span class="log-json">${match}</span>`;
+                    }
+                });
+                
+                return highlightedText;
             }
             
             // Function to show error message

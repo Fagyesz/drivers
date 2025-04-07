@@ -6,6 +6,159 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'">
     <title>Logs Viewer - Driver Alerts</title>
     <link rel="stylesheet" href="../styles.css">
+    <style>
+        /* Log syntax highlighting styles */
+        .logs-output {
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+            padding: 10px;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 4px;
+            line-height: 1.5;
+            overflow-y: auto;
+            height: calc(100vh - 240px);
+        }
+        
+        .log-timestamp {
+            color: #6A9955;
+            font-weight: normal;
+        }
+        
+        .log-bracket {
+            color: #808080;
+        }
+        
+        .log-error {
+            color: #ff0000;
+            font-weight: bold;
+            font-size: 1.2em;
+            text-shadow: 0 0 1px rgba(255, 0, 0, 0.3);
+        }
+        
+        .log-warn {
+            color: #e6cd3c;
+            font-weight: bold;
+        }
+        
+        .log-info {
+            color: #569cd6;
+            font-weight: bold;
+        }
+        
+        .log-debug {
+            color: #b5cea8;
+        }
+        
+        .log-error-line {
+            display: block;
+            color: #ff0000;
+            background-color: rgba(255, 0, 0, 0.2);
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #ff0000;
+            border-radius: 6px;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+            font-size: 1.2em;
+        }
+        
+        .log-stack {
+            display: block;
+            color: #d4a97e;
+            font-size: 0.9em;
+            padding: 2px 0;
+            padding-left: 20px;
+            border-left: 1px dashed #d4a97e;
+        }
+        
+        .log-json {
+            display: block;
+            background-color: rgba(86, 156, 214, 0.1);
+            border-radius: 3px;
+            padding: 8px;
+            margin: 5px 0;
+            font-family: monospace;
+            border-left: 2px solid #569cd6;
+        }
+        
+        .log-json-key {
+            color: #9cdcfe;
+        }
+        
+        .log-json-string {
+            color: #ce9178;
+        }
+        
+        .log-json-number {
+            color: #b5cea8;
+        }
+        
+        .log-json-boolean {
+            color: #569cd6;
+        }
+        
+        .log-json-null {
+            color: #569cd6;
+        }
+        
+        /* Filter and controls */
+        .logs-controls {
+            background-color: #252526;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .form-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex: 1;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            flex: 0.5;
+            margin-left: 10px;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        
+        .form-group input,
+        .form-group select {
+            flex: 1;
+            padding: 6px 10px;
+            background-color: #3c3c3c;
+            color: #ffffff;
+            border: 1px solid #555;
+            border-radius: 3px;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .refresh-notice {
+            background-color: #2d2d2d;
+            color: #ffcc00;
+            padding: 10px;
+            margin: 0 0 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+            border: 1px dashed #ffcc00;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -15,10 +168,15 @@
                 <h1>Driver Alerts - Logs Viewer</h1>
             </div>
             <div class="header-actions">
-                <button id="refresh-logs-btn" class="button" title="Refresh Logs">Refresh</button>
-                <button id="back-btn" class="button secondary">Back to FAQ</button>
+                <button id="reload-button" class="btn" onclick="window.forceReload()">Force Reload</button>
+                <button id="refresh-button" class="btn">Refresh</button>
+                <button id="back-button" class="btn">Back</button>
             </div>
         </header>
+
+        <div class="refresh-notice">
+            If you don't see updated styles, please use Ctrl+F5 or Cmd+Shift+R to force a complete refresh.
+        </div>
 
         <div class="content-area">
             <div class="logs-controls">
@@ -38,6 +196,13 @@
                     <input type="text" id="log-search" placeholder="Filter by keyword...">
                 </div>
                 
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="hide-debug-rows" checked>
+                        Hide Excel Debug Rows
+                    </label>
+                </div>
+                
                 <div class="form-actions">
                     <button id="clear-logs-btn" class="button secondary">Clear Logs</button>
                     <button id="export-logs-btn" class="button">Export Logs</button>
@@ -50,6 +215,6 @@
         </div>
     </div>
 
-    <script src="../src/logs-viewer.js"></script>
+    <script src="../src/logs-viewer.js?v=1.1"></script>
 </body>
 </html> 

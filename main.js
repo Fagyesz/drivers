@@ -11,7 +11,11 @@ const excelParser = require('./src/excelParser');
 
 // Import logger and issue manager
 const logger = require('./src/logger');
-logger.setLogLevel('debug'); // Set log level to debug to capture more details
+// Force logger level to debug to ensure all logs are captured
+logger.setLogLevel('debug');
+console.log('Logger level set to debug mode');
+// Log a test error to confirm error styling
+logger.error('TEST ERROR - Error formatting test', { error: new Error('Test error with stack trace') });
 const issueManager = require('./src/issues');
 
 // Initialize database with the correct path
@@ -1023,17 +1027,57 @@ ipcMain.handle('parse-alert-excel', async (event, filePath) => {
 // IPC handler for log messages from renderer process
 ipcMain.handle('log-message', (event, logData) => {
   if (!logData || !logData.level || !logData.message) {
+    console.error('Invalid log data format received:', logData);
     return { success: false, error: 'Invalid log data format' };
   }
   
   const { level, message, data } = logData;
   
-  // Only log if level is valid
-  if (typeof logger[level] === 'function') {
-    logger[level](message, data);
+  try {
+    // Add sender information for better context
+    const webContents = event.sender;
+    const win = BrowserWindow.fromWebContents(webContents);
+    const contextData = {
+      ...data,
+      renderer: {
+        id: webContents.id,
+        url: webContents.getURL(),
+        title: win ? win.getTitle() : 'Unknown',
+        windowId: win ? win.id : 'Unknown'
+      }
+    };
+    
+    // Only log if level is valid
+    if (typeof logger[level] === 'function') {
+      logger[level](message, contextData);
+      return { success: true };
+    } else {
+      const errorMsg = `Invalid log level received from renderer: ${level}`;
+      console.error(errorMsg);
+      // Log as error with the original message
+      logger.error(errorMsg, { originalMessage: message, ...contextData });
+      return { success: false, error: 'Invalid log level' };
+    }
+  } catch (err) {
+    console.error('Error handling renderer log message:', err);
+    logger.error('Error processing renderer log', { 
+      error: err, 
+      originalMessage: message,
+      originalData: data
+    });
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC handler for clearing log cache
+ipcMain.handle('clear-log-cache', (event) => {
+  try {
+    console.log('Clearing log cache...');
+    // We'll generate a test error log to verify styling
+    logger.error('TEST ERROR - Force refresh test', { error: new Error('Test error with stack trace') });
     return { success: true };
-  } else {
-    console.error(`Invalid log level: ${level}`);
-    return { success: false, error: 'Invalid log level' };
+  } catch (error) {
+    console.error('Error clearing log cache:', error);
+    return { success: false, error: error.message };
   }
 }); 
