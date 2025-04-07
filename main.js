@@ -633,8 +633,25 @@ ipcMain.handle('import-alerts-excel', async (event, filePath) => {
     console.log(`Parsed ${records.length} Alert records`);
     
     if (records && records.length > 0) {
-      // Import the records to the database
-      const result = await database.importAlertData(records);
+      // Ensure all records have valid plate_number
+      const validRecords = records.filter(record => {
+        if (!record.plate_number || record.plate_number.trim() === '') {
+          console.error('Skipping record with missing plate_number', record);
+          return false;
+        }
+        return true;
+      });
+      
+      if (validRecords.length === 0) {
+        return {
+          success: false,
+          message: 'No valid Alert records found with plate numbers.',
+          data: { success: 0, errors: records.length, total: records.length }
+        };
+      }
+      
+      // Import the valid records to the database
+      const result = await database.importAlertData(validRecords);
       
       return {
         success: true,
@@ -1013,8 +1030,26 @@ ipcMain.handle('parse-alert-excel', async (event, filePath) => {
     console.log(`Parsed ${records.length} Alert records`);
     
     if (records && records.length > 0) {
-      // Import the records to the database
-      const result = await database.importAlertData(records);
+      // Filter out records with missing plate numbers
+      const validRecords = records.filter(record => {
+        if (!record.plate_number || record.plate_number.trim() === '') {
+          console.error('Skipping record with missing plate_number', record);
+          return false;
+        }
+        return true;
+      });
+      
+      if (validRecords.length === 0) {
+        return {
+          success: 0,
+          errors: records.length,
+          total: records.length,
+          message: 'No valid alert records with plate numbers found.'
+        };
+      }
+      
+      // Import the valid records to the database
+      const result = await database.importAlertData(validRecords);
       
       return {
         success: result.success,

@@ -942,6 +942,18 @@ class ExcelParser {
                     important_point: importantPoint
                 };
                 
+                // Skip records with empty or invalid plate numbers
+                if (!plateNumber || 
+                    plateNumber.toLowerCase().includes('rendszám') || 
+                    plateNumber.toLowerCase().includes('terület') || 
+                    plateNumber.toLowerCase().includes('telephely') ||
+                    plateNumber.toLowerCase() === 'irány' ||
+                    plateNumber.toLowerCase() === 'időpont' ||
+                    !this.isValidPlateNumber(plateNumber)) {
+                    logger.warn(`Skipping record with invalid plate number: "${plateNumber}"`);
+                    continue;
+                }
+                
                 logger.info(`Parsed record at row ${i}:`, record);
                 allRecords.push(record);
             }
@@ -952,6 +964,31 @@ class ExcelParser {
             logger.error('Error parsing Alert Excel', { error: error.message });
             throw new Error(`Failed to parse Alert Excel: ${error.message}`);
         }
+    }
+    
+    /**
+     * Validate a license plate number
+     * @param {string} plate - License plate to validate
+     * @returns {boolean} True if valid
+     */
+    isValidPlateNumber(plate) {
+        if (!plate) return false;
+        
+        // Skip known header/label values
+        const invalidTerms = ['rendszám', 'terület', 'telephely', 'időpont', 'irány', 
+                             'töltött', 'megtett', 'állás', 'allas', 'pont', 'position'];
+                             
+        for (const term of invalidTerms) {
+            if (plate.toLowerCase().includes(term)) {
+                return false;
+            }
+        }
+        
+        // Must contain hyphen, be between 5-10 chars, and not be all numbers
+        return plate.includes('-') && 
+               plate.length >= 5 && 
+               plate.length <= 10 && 
+               /[A-Za-z]/.test(plate);
     }
 
     /**

@@ -844,85 +844,6 @@ class DriverAlertsDatabase {
     }
   }
 
-  // Import Alert Excel data
-  async importAlertData(records) {
-    const result = { success: 0, errors: 0, total: records.length };
-    
-    if (!records || records.length === 0) {
-      return result;
-    }
-    
-    try {
-      console.log(`Importing ${records.length} Alert records to database`);
-      
-      // Begin transaction
-      const transaction = this.db.transaction((data) => {
-        // First clear existing data
-        console.log('Clearing existing data from stop_events_alert table');
-        this.db.prepare(`DELETE FROM stop_events_alert`).run();
-        
-        // Insert new records
-        const stmt = this.db.prepare(`
-          INSERT INTO stop_events_alert (
-            plate_number, arrival_time, status, position, important_point, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-        `);
-        
-        for (const record of data) {
-          try {
-            // Clean and format data
-            const cleanRecord = {
-              plate_number: record.plate_number || '',
-              arrival_time: record.arrival_time || '',
-              status: record.status || '',
-              position: record.position || '',
-              important_point: record.important_point || 0
-            };
-            
-            console.log('Inserting alert record:', cleanRecord);
-            
-            stmt.run(
-              cleanRecord.plate_number,
-              cleanRecord.arrival_time,
-              cleanRecord.status,
-              cleanRecord.position,
-              cleanRecord.important_point
-            );
-            result.success++;
-          } catch (error) {
-            console.error('Error inserting Alert record:', error, record);
-            result.errors++;
-          }
-        }
-      });
-      
-      // Execute transaction
-      transaction(records);
-      
-      console.log('Alert import completed with result:', result);
-      return result;
-    } catch (error) {
-      console.error('Error importing Alert data:', error);
-      throw error;
-    }
-  }
-
-  // Get important alerts
-  async getImportantAlerts() {
-    try {
-      console.log("Getting important alerts from stop_events_alert table");
-      const query = `
-        SELECT * FROM stop_events_alert 
-        WHERE important_point = 1
-        ORDER BY arrival_time DESC
-      `;
-      return this.db.prepare(query).all();
-    } catch (error) {
-      console.error('Error fetching important alerts:', error);
-      return [];
-    }
-  }
-
   // Import alert data from Excel
   async importAlertData(records) {
     const now = new Date().toISOString();
@@ -947,8 +868,15 @@ class DriverAlertsDatabase {
       
       records.forEach(record => {
         try {
+          // Skip records with empty plate number
+          if (!record.plate_number) {
+            console.error('Error importing alert: Missing plate_number');
+            errorCount++;
+            return;
+          }
+          
           stmt.run(
-            record.platenumber,
+            record.plate_number,
             record.arrival_time,
             record.status,
             record.position,
@@ -957,7 +885,7 @@ class DriverAlertsDatabase {
           );
           successCount++;
         } catch (error) {
-          console.error(`Error importing alert: ${error.message}`);
+          console.error(`Error importing alert: ${error.message}`, record);
           errorCount++;
         }
       });
@@ -978,7 +906,23 @@ class DriverAlertsDatabase {
       throw error;
     }
   }
-  
+
+  // Get important alerts
+  async getImportantAlerts() {
+    try {
+      console.log("Getting important alerts from stop_events_alert table");
+      const query = `
+        SELECT * FROM stop_events_alert 
+        WHERE important_point = 1
+        ORDER BY arrival_time DESC
+      `;
+      return this.db.prepare(query).all();
+    } catch (error) {
+      console.error('Error fetching important alerts:', error);
+      return [];
+    }
+  }
+
   // Import iFleet data from Excel
   async importIFleetData(data) {
     const now = new Date().toISOString();
