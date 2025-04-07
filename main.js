@@ -15,7 +15,7 @@ const logger = require('./src/logger');
 logger.setLogLevel('debug');
 console.log('Logger level set to debug mode');
 // Log a test error to confirm error styling
-logger.error('TEST ERROR - Error formatting test', { error: new Error('Test error with stack trace') });
+// logger.error('TEST ERROR - Error formatting test', { error: new Error('Test error with stack trace') });
 const issueManager = require('./src/issues');
 
 // Initialize database with the correct path
@@ -1073,8 +1073,6 @@ ipcMain.handle('log-message', (event, logData) => {
 ipcMain.handle('clear-log-cache', (event) => {
   try {
     console.log('Clearing log cache...');
-    // We'll generate a test error log to verify styling
-    logger.error('TEST ERROR - Force refresh test', { error: new Error('Test error with stack trace') });
     return { success: true };
   } catch (error) {
     console.error('Error clearing log cache:', error);

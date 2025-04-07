@@ -32,6 +32,18 @@
             padding-left: 5px;
         }
         
+        /* Style for stack traces and error details */
+        .stack-trace {
+            color: #ff4444 !important;
+            display: block;
+            background-color: rgba(255, 0, 0, 0.05);
+            border-left: 3px solid #ff4444;
+            padding-left: 5px;
+            margin-left: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        
         .warn-line {
             color: #ffbb00 !important;
             font-weight: bold;
@@ -444,6 +456,15 @@
                         // Match exact format seen in logs - note the space after INFO
                         if (line.match(/\[ERROR\]/)) {
                             styledLines.push(`<div class="error-line">${line}</div>`);
+                        } else if (line.match(/^\s*ERROR:/)) {
+                            // Match error details lines
+                            styledLines.push(`<div class="stack-trace">${line}</div>`);
+                        } else if (line.match(/^\s*STACK:/)) { 
+                            // Match stack trace lines
+                            styledLines.push(`<div class="stack-trace">${line}</div>`);
+                        } else if (line.match(/^\s+at /)) {
+                            // Match individual stack trace entries
+                            styledLines.push(`<div class="stack-trace">${line}</div>`);
                         } else if (line.match(/\[WARN\]/)) {
                             styledLines.push(`<div class="warn-line">${line}</div>`);
                         } else if (line.match(/\[INFO ?]/)) {  // Match [INFO] or [INFO ]
