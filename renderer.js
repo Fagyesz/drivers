@@ -346,28 +346,93 @@ async function loadAlerts() {
     }
     
     try {
+        rendererLogger.info('Calling ipcRenderer.invoke("get-alerts")');
         const alerts = await ipcRenderer.invoke('get-alerts');
+        rendererLogger.info(`Received alerts response with ${alerts ? alerts.length : 0} items`);
         
         if (!alerts || alerts.length === 0) {
+            rendererLogger.info('No alerts returned, displaying no data message');
             alertsContainer.innerHTML = '<div class="no-data-message">No alerts found</div>';
             return;
         }
         
+        // Sample log the first alert for debugging
+        rendererLogger.info('First alert in response:', alerts[0]);
+        
         // Display alerts
         let html = '<div class="data-grid">';
         alerts.forEach(alert => {
+            // Determine status class and style
+            let cardClass = 'alert-card';
+            let statusBadge = '';
+            
+            // Default to 'pending' if supervised is not set
+            const supervisedStatus = alert.supervised || 'pending';
+            
+            switch(supervisedStatus) {
+                case 'justified':
+                    cardClass += ' resolved';  // Use resolved class for justified alerts
+                    statusBadge = '<span class="badge badge-success">Justified</span>';
+                    break;
+                case 'unjustified':
+                    cardClass += ' ignored';   // Use ignored class for unjustified alerts
+                    statusBadge = '<span class="badge badge-danger">Unjustified</span>';
+                    break;
+                default:
+                    statusBadge = '<span class="badge badge-warning">Pending</span>';
+            }
+            
+            // Format arrival time
+            let arrivalTime = alert.arrival_time || 'Unknown';
+            try {
+                const date = new Date(arrivalTime);
+                if (!isNaN(date.getTime())) {
+                    arrivalTime = date.toLocaleString();
+                }
+            } catch (e) {
+                // Keep as is if can't parse
+            }
+            
             html += `
-                <div class="data-card alert">
-                    <h3>${alert.alert_type || 'Unknown Alert'}</h3>
-                    <p>Location: ${alert.location || 'Unknown'}</p>
-                    <p>Time: ${alert.timestamp || 'Unknown'}</p>
-                    <p>Status: ${alert.status || 'Unknown'}</p>
+                <div class="data-card ${cardClass}" data-id="${alert.id}">
+                    <h3>${alert.plate_number || 'Unknown Vehicle'}</h3>
+                    <div class="card-content">
+                        <p><strong>Time:</strong> ${arrivalTime}</p>
+                        <p><strong>Standing Duration:</strong> ${alert.status || 'Unknown'}</p>
+                        <p><strong>Location:</strong> ${alert.position || 'Unknown'}</p>
+                        <p><strong>Company:</strong> ${alert.important_point || 'Not specified'}</p>
+                        <p><strong>Status:</strong> ${statusBadge}</p>
+                    </div>
+                    <div class="card-actions">
+                        ${alert.supervised !== 'justified' ? 
+                            `<button class="action-btn btn-justify" data-action="resolve" data-id="${alert.id}">Justified</button>` : ''}
+                        ${alert.supervised !== 'unjustified' ? 
+                            `<button class="action-btn btn-unjustify" data-action="ignore" data-id="${alert.id}">Unjustified</button>` : ''}
+                    </div>
                 </div>
             `;
         });
         html += '</div>';
         
         alertsContainer.innerHTML = html;
+        rendererLogger.info('Alerts successfully rendered');
+        
+        // Add event listeners to the buttons
+        document.querySelectorAll('#alerts-tab .btn-justify').forEach(button => {
+            button.addEventListener('click', async function() {
+                const id = this.getAttribute('data-id');
+                await updateAlertSupervised(id, 'justified');
+                loadAlerts(); // Reload the alerts tab
+            });
+        });
+        
+        document.querySelectorAll('#alerts-tab .btn-unjustify').forEach(button => {
+            button.addEventListener('click', async function() {
+                const id = this.getAttribute('data-id');
+                await updateAlertSupervised(id, 'unjustified');
+                loadAlerts(); // Reload the alerts tab
+            });
+        });
     } catch (error) {
         rendererLogger.error('Error loading alerts', { error: error.message });
         alertsContainer.innerHTML = `<div class="error-message">Error loading alerts: ${error.message}</div>`;

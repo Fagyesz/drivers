@@ -560,25 +560,9 @@ class DriverAlertsDatabase {
   async getAlerts() {
     try {
       console.log("Getting alerts from stop_events_alert table");
-      // First check if the table exists and has the arrival_time column
-      try {
-        const tableInfo = this.db.prepare(`PRAGMA table_info(stop_events_alert)`).all();
-        const hasArrivalTime = tableInfo.some(col => col.name === 'arrival_time');
-        
-        if (!hasArrivalTime) {
-          console.warn("stop_events_alert table doesn't have arrival_time column, returning empty array");
-          return [];
-        }
-        
-        const query = `
-          SELECT * FROM stop_events_alert 
-          ORDER BY arrival_time DESC
-        `;
-        return this.db.prepare(query).all();
-      } catch (error) {
-        console.warn("Error checking stop_events_alert table:", error);
-        return [];
-      }
+      
+      // Direct simple query to avoid complications
+      return this.db.prepare('SELECT * FROM stop_events_alert ORDER BY arrival_time DESC').all() || [];
     } catch (error) {
       console.error('Error fetching alerts:', error);
       return [];  // Return empty array instead of throwing to avoid crashing
