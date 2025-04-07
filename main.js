@@ -660,14 +660,28 @@ ipcMain.handle('import-alerts-excel', async (event, filePath) => {
 
 ipcMain.handle('import-ifleet-excel', async (event, filePath) => {
   try {
-    // This is a stub for future implementation
-    // Would call an appropriate parser and database method
+    logger.info('Importing iFleet Excel file', { file: filePath });
     
-    return {
-      success: true,
-      message: "iFleet import functionality is not yet implemented",
-      data: { success: 0, errors: 0, total: 0 }
-    };
+    // Use our parser and database import
+    const records = await excelParser.parseIFleetExcel(filePath);
+    console.log(`Parsed ${records.length} iFleet records`);
+    
+    if (records && records.length > 0) {
+      // Import the records to the database
+      const result = await database.importIFleetData(records);
+      
+      return {
+        success: true,
+        message: `Successfully imported ${result.success} iFleet records. ${result.errors} errors.`,
+        data: result
+      };
+    } else {
+      return {
+        success: false,
+        message: 'No iFleet records found in the Excel file.',
+        data: { success: 0, errors: 0, total: 0 }
+      };
+    }
   } catch (error) {
     console.error('Error importing iFleet Excel:', error);
     return {
@@ -751,9 +765,14 @@ ipcMain.handle('get-alerts-data', async (event) => {
   }
 });
 
-// Handler for retrieving iFleet data (stub for now)
+// Handler for retrieving iFleet data
 ipcMain.handle('get-ifleet-data', async (event) => {
-  return [];  // Empty array as placeholder
+  try {
+    return await database.getIFleetData();
+  } catch (error) {
+    console.error('Error getting iFleet data:', error);
+    return [];
+  }
 });
 
 // Handler for retrieving SysWeb data
@@ -1077,5 +1096,30 @@ ipcMain.handle('clear-log-cache', (event) => {
   } catch (error) {
     console.error('Error clearing log cache:', error);
     return { success: false, error: error.message };
+  }
+});
+
+// Register the confirm-ifleet-import handler
+ipcMain.handle('confirm-ifleet-import', async (event, validData) => {
+  try {
+    logger.info('Confirming iFleet data import to database', { count: validData.length });
+    
+    // Import the valid records to the database
+    const result = await database.importIFleetData(validData);
+    
+    return {
+      success: true,
+      message: `Successfully imported ${result.success} iFleet records. ${result.errors} errors.`,
+      data: result
+    };
+  } catch (error) {
+    console.error('Error confirming iFleet import:', error);
+    logger.error('Error confirming iFleet import', { error: error.message });
+    
+    return {
+      success: false,
+      message: `Error confirming iFleet import: ${error.message}`,
+      error: error.message
+    };
   }
 }); 

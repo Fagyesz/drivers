@@ -953,6 +953,221 @@ class ExcelParser {
             throw new Error(`Failed to parse Alert Excel: ${error.message}`);
         }
     }
+
+    /**
+     * Parse iFleet Excel file
+     * @param {string} filePath - Path to the Excel file
+     * @returns {Array} Array of parsed records
+     */
+    async parseIFleetExcel(filePath) {
+        try {
+            logger.info('Parsing iFleet Excel file', { filePath });
+            
+            // Use the XLSX library for simpler parsing
+            const XLSX = require('xlsx');
+            const workbook = XLSX.readFile(filePath);
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            
+            // Convert to JSON
+            const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+            logger.info(`iFleet data has ${jsonData.length} rows`);
+            
+            // Headers we expect to find
+            const expectedHeaders = ['rendszám', 'időpont', 'terület neve', 'irány', 'területen töltött idő', 'területen megtett táv'];
+            const headerMap = {
+                'rendszám': 'platenumber',
+                'időpont': 'timestamp',
+                'terület neve': 'area_name',
+                'irány': 'direction',
+                'területen töltött idő': 'time_spent',
+                'területen megtett táv': 'distance'
+            };
+            
+            // Look for the header row - based on our inspection, it's likely around row 13
+            let headerRow = -1;
+            const startRow = Math.max(0, 10); // Start looking from row 10
+            const endRow = Math.min(jsonData.length, 20); // Look up to row 20
+            
+            for (let i = startRow; i < endRow; i++) {
+                const row = jsonData[i];
+                if (!row) continue;
+                
+                // Convert row values to lowercase for comparison
+                const lowerRow = row.map(cell => {
+                    if (cell === null) return null;
+                    return String(cell).toLowerCase().trim();
+                });
+                
+                // Check how many headers match
+                let matchCount = 0;
+                expectedHeaders.forEach(header => {
+                    if (lowerRow.some(cell => cell === header.toLowerCase())) {
+                        matchCount++;
+                    }
+                });
+                
+                if (matchCount >= 3) { // At least 3 headers match
+                    headerRow = i;
+                    logger.info(`Found header row at index ${headerRow}`);
+                    break;
+                }
+            }
+            
+            if (headerRow === -1) {
+                throw new Error('Could not find header row in the Excel file');
+            }
+            
+            // Get the headers from the identified row
+            const headerCells = jsonData[headerRow];
+            
+            // Map column indices to our field names
+            const columnIndices = {};
+            headerCells.forEach((cell, index) => {
+                if (cell) {
+                    const lowerCell = String(cell).toLowerCase().trim();
+                    for (const [excelHeader, fieldName] of Object.entries(headerMap)) {
+                        if (lowerCell === excelHeader.toLowerCase()) {
+                            columnIndices[fieldName] = index;
+                            break;
+                        }
+                    }
+                }
+            });
+            
+            logger.info('Column mapping: ', columnIndices);
+            
+            // Check if we found all required columns
+            const requiredColumns = ['platenumber', 'timestamp'];
+            const missingColumns = requiredColumns.filter(col => columnIndices[col] === undefined);
+            
+            if (missingColumns.length > 0) {
+                throw new Error(`Required columns missing: ${missingColumns.join(', ')}`);
+            }
+            
+            // Data starts after the header row
+            const dataStartRow = headerRow + 1;
+            
+            // Parse data rows
+            const records = [];
+            for (let i = dataStartRow; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                if (!row) continue;
+                
+                // Skip empty rows or rows with no plate number
+                if (!row[columnIndices.platenumber]) continue;
+                
+                const record = {};
+                
+                // Extract data using the mapped column indices
+                for (const [fieldName, colIndex] of Object.entries(columnIndices)) {
+                    const cellValue = row[colIndex];
+                    
+                    // Skip if no value
+                    if (cellValue === null || cellValue === undefined) {
+                        record[fieldName] = null;
+                        continue;
+                    }
+                    
+                    // Process specific fields
+                    switch (fieldName) {
+                        case 'platenumber':
+                            record.platenumber = String(cellValue).trim();
+                            break;
+                            
+                        case 'timestamp':
+                            // Handle Excel date number
+                            let timestamp = cellValue;
+                            if (typeof cellValue === 'number') {
+                                // Excel date number - convert to JS date
+                                const excelDate = XLSX.SSF.parse_date_code(cellValue);
+                                const jsDate = new Date(
+                                    excelDate.y, 
+                                    excelDate.m - 1, 
+                                    excelDate.d, 
+                                    excelDate.H, 
+                                    excelDate.M, 
+                                    excelDate.S
+                                );
+                                timestamp = jsDate.toISOString();
+                            } else if (cellValue instanceof Date) {
+                                timestamp = cellValue.toISOString();
+                            } else {
+                                // String date - keep as is
+                                timestamp = String(cellValue).trim();
+                            }
+                            record.timestamp = timestamp;
+                            break;
+                            
+                        case 'area_name':
+                            record.area_name = cellValue ? String(cellValue).trim() : null;
+                            break;
+                            
+                        case 'direction':
+                            record.direction = cellValue ? String(cellValue).trim() : null;
+                            break;
+                            
+                        case 'time_spent':
+                            // Convert time to minutes or keep as is
+                            if (typeof cellValue === 'number') {
+                                // Could be minutes or Excel time
+                                if (cellValue < 1) {
+                                    // Excel time (fraction of day)
+                                    record.time_spent = Math.round(cellValue * 24 * 60);
+                                } else {
+                                    record.time_spent = Math.round(cellValue);
+                                }
+                            } else if (typeof cellValue === 'string') {
+                                // Try to parse time format like "HH:MM"
+                                const timeParts = cellValue.trim().split(':');
+                                if (timeParts.length === 2) {
+                                    const hours = parseInt(timeParts[0], 10);
+                                    const minutes = parseInt(timeParts[1], 10);
+                                    if (!isNaN(hours) && !isNaN(minutes)) {
+                                        record.time_spent = hours * 60 + minutes;
+                                    } else {
+                                        record.time_spent = null;
+                                    }
+                                } else {
+                                    record.time_spent = null;
+                                }
+                            } else {
+                                record.time_spent = null;
+                            }
+                            break;
+                            
+                        case 'distance':
+                            // Parse distance as number
+                            if (typeof cellValue === 'number') {
+                                record.distance = cellValue;
+                            } else if (typeof cellValue === 'string') {
+                                // Try to parse string as number
+                                const parsedValue = parseFloat(cellValue.trim().replace(',', '.'));
+                                record.distance = isNaN(parsedValue) ? null : parsedValue;
+                            } else {
+                                record.distance = null;
+                            }
+                            break;
+                            
+                        default:
+                            // For other fields, just store as is
+                            record[fieldName] = cellValue;
+                    }
+                }
+                
+                // Only add if we have required fields
+                if (record.platenumber && record.timestamp) {
+                    records.push(record);
+                }
+            }
+            
+            logger.info(`Parsed ${records.length} iFleet records`);
+            return records;
+        } catch (error) {
+            logger.error('Error parsing iFleet Excel', { error: error.message });
+            throw new Error(`Failed to parse iFleet Excel: ${error.message}`);
+        }
+    }
 }
 
 module.exports = new ExcelParser(); 

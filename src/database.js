@@ -141,6 +141,21 @@ class DriverAlertsDatabase {
           created_at TEXT DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
+      `,
+      staging_ifleet: `
+        CREATE TABLE IF NOT EXISTS staging_ifleet (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          platenumber TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          area_name TEXT,
+          direction TEXT,
+          time_spent INTEGER,
+          distance REAL,
+          processed BOOLEAN DEFAULT 0,
+          import_date TEXT NOT NULL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
       `
     };
 
@@ -906,6 +921,190 @@ class DriverAlertsDatabase {
       console.error('Error fetching important alerts:', error);
       return [];
     }
+  }
+
+  // Import alert data from Excel
+  async importAlertData(records) {
+    const now = new Date().toISOString();
+    let stmt;
+    
+    try {
+      // Clear the table first
+      this.db.exec(`DELETE FROM stop_events_alert`);
+      
+      // Create a prepared statement
+      stmt = this.db.prepare(`
+        INSERT INTO stop_events_alert 
+        (plate_number, arrival_time, status, position, important_point, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      
+      // Begin transaction
+      this.db.exec('BEGIN TRANSACTION');
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      records.forEach(record => {
+        try {
+          stmt.run(
+            record.platenumber,
+            record.arrival_time,
+            record.status,
+            record.position,
+            record.important_point ? '1' : '0',
+            now
+          );
+          successCount++;
+        } catch (error) {
+          console.error(`Error importing alert: ${error.message}`);
+          errorCount++;
+        }
+      });
+      
+      // Commit transaction
+      this.db.exec('COMMIT');
+      
+      return {
+        success: successCount,
+        errors: errorCount,
+        total: records.length
+      };
+    } catch (error) {
+      console.error('Error in importAlertData:', error);
+      if (this.db.inTransaction) {
+        this.db.exec('ROLLBACK');
+      }
+      throw error;
+    }
+  }
+  
+  // Import iFleet data from Excel
+  async importIFleetData(data) {
+    const now = new Date().toISOString();
+    const importDate = now.split('T')[0];
+    let stmt;
+    
+    try {
+      // Create a prepared statement
+      stmt = this.db.prepare(`
+        INSERT INTO staging_ifleet 
+        (platenumber, timestamp, area_name, direction, time_spent, distance, import_date, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      // Begin transaction
+      this.db.exec('BEGIN TRANSACTION');
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      data.forEach(item => {
+        try {
+          stmt.run(
+            item.platenumber,
+            item.timestamp,
+            item.area_name,
+            item.direction,
+            item.time_spent,
+            item.distance,
+            importDate,
+            now,
+            now
+          );
+          successCount++;
+        } catch (error) {
+          console.error(`Error importing iFleet data: ${error.message}`);
+          errorCount++;
+        }
+      });
+      
+      // Commit transaction
+      this.db.exec('COMMIT');
+      
+      // Also create vehicle records for any new plate numbers
+      this.createVehiclesFromPlateNumbers(data);
+      
+      return {
+        success: successCount,
+        errors: errorCount,
+        total: data.length
+      };
+      
+    } catch (error) {
+      console.error('Error in importIFleetData:', error);
+      if (this.db.inTransaction) {
+        this.db.exec('ROLLBACK');
+      }
+      throw error;
+    }
+  }
+  
+  // Create vehicle records for plate numbers that don't exist
+  async createVehiclesFromPlateNumbers(data) {
+    try {
+      // Get unique plate numbers from the data
+      const plateNumbers = [...new Set(data.map(item => item.platenumber))];
+      
+      // Define regex patterns for valid plate numbers
+      const plateNumberPattern = /^[A-Z]{2,3}-[A-Z0-9]{2,4}-\d{2,3}$|^[A-Z]{1,3}-[A-Z0-9]{2,3}-\d{2,3}$|^[A-Z]{2,3}-[A-Z0-9]{2,3}$|^[A-Z]{3}-\d{3}$/;
+      
+      // Filter out invalid plate numbers
+      const validPlateNumbers = plateNumbers.filter(plate => {
+        // Skip known header values
+        if (!plate || 
+            plate.toLowerCase().includes('rendszám') || 
+            plate.toLowerCase().includes('terület') || 
+            plate.toLowerCase().includes('telephely')) {
+          return false;
+        }
+        
+        // Check if it looks like a valid plate number
+        return plateNumberPattern.test(plate) || 
+               (plate.includes('-') && plate.length >= 5 && plate.length <= 10);
+      });
+      
+      console.log(`Found ${validPlateNumbers.length} valid plate numbers out of ${plateNumbers.length}`);
+      
+      for (const plate of validPlateNumbers) {
+        // Check if vehicle already exists
+        const existingVehicle = this.db.prepare(`
+          SELECT id FROM vehicles WHERE plate_number = ?
+        `).get(plate);
+        
+        if (!existingVehicle) {
+          // Insert new vehicle
+          this.db.prepare(`
+            INSERT INTO vehicles (plate_number, vehicle_type, status, notes, created_at, updated_at)
+            VALUES (?, 'unknown', 'active', 'Automatically created from iFleet import', datetime('now'), datetime('now'))
+          `).run(plate);
+          
+          console.log(`Created new vehicle with plate number: ${plate}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error creating vehicles from plate numbers:', error);
+    }
+  }
+  
+  // Get iFleet data
+  async getIFleetData() {
+    try {
+      const query = `
+        SELECT * FROM staging_ifleet
+        ORDER BY timestamp DESC
+      `;
+      
+      return this.db.prepare(query).all();
+    } catch (error) {
+      console.error('Error getting iFleet data:', error);
+      throw error;
+    }
+  }
+
+  // Get alerts with optional filtering
+  async getAlerts(plateNumber = null, fromDate = null, toDate = null, onlyImportant = false) {
+    // Implementation of getAlerts method
   }
 }
 

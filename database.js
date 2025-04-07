@@ -208,6 +208,22 @@ class Database {
             )
         `;
         
+        // Add new staging table for iFleet imports
+        const createStagingIFleetTable = `
+            CREATE TABLE IF NOT EXISTS staging_ifleet (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platenumber TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                area_name TEXT,
+                direction TEXT,
+                time_spent INTEGER,
+                distance REAL,
+                processed BOOLEAN DEFAULT 0,
+                import_date TEXT NOT NULL,
+                updated_at TEXT
+            )
+        `;
+        
         return new Promise((resolve, reject) => {
             this.db.serialize(() => {
                 this.db.run(createPeopleTable, (err) => {
@@ -277,7 +293,14 @@ class Database {
                                                                 return;
                                                             }
                                                             
-                                                            resolve('Tables created successfully');
+                                                            this.db.run(createStagingIFleetTable, (err) => {
+                                                                if (err) {
+                                                                    reject(`Error creating staging_ifleet table: ${err.message}`);
+                                                                    return;
+                                                                }
+                                                                
+                                                                resolve('All tables created successfully');
+                                                            });
                                                         });
                                                     });
                                                 });
@@ -1392,6 +1415,81 @@ class Database {
             this.db.all(sql, params, (err, rows) => {
                 if (err) {
                     reject(`Error getting vehicle rounds: ${err.message}`);
+                    return;
+                }
+                
+                resolve(rows);
+            });
+        });
+    }
+
+    async importIFleetData(data) {
+        const now = new Date().toISOString();
+        const importDate = now.split('T')[0];
+        
+        return new Promise((resolve, reject) => {
+            const stmt = this.db.prepare(`
+                INSERT INTO staging_ifleet 
+                (platenumber, timestamp, area_name, direction, time_spent, distance, import_date, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            
+            let successCount = 0;
+            let errorCount = 0;
+            
+            // Begin transaction
+            this.db.run('BEGIN TRANSACTION');
+            
+            data.forEach(item => {
+                try {
+                    stmt.run(
+                        item.platenumber,
+                        item.timestamp,
+                        item.area_name,
+                        item.direction,
+                        item.time_spent,
+                        item.distance,
+                        importDate,
+                        now
+                    );
+                    successCount++;
+                } catch (error) {
+                    console.error(`Error importing iFleet data: ${error.message}`);
+                    errorCount++;
+                }
+            });
+            
+            // Finalize statement
+            stmt.finalize();
+            
+            // Commit transaction
+            this.db.run('COMMIT', err => {
+                if (err) {
+                    this.db.run('ROLLBACK');
+                    reject(`Transaction failed: ${err.message}`);
+                    return;
+                }
+                
+                resolve({
+                    success: successCount,
+                    errors: errorCount,
+                    importDate
+                });
+            });
+        });
+    }
+
+    // Method to get the iFleet data
+    async getIFleetData() {
+        return new Promise((resolve, reject) => {
+            const sql = `
+                SELECT * FROM staging_ifleet
+                ORDER BY timestamp DESC
+            `;
+            
+            this.db.all(sql, [], (err, rows) => {
+                if (err) {
+                    reject(`Error getting iFleet data: ${err.message}`);
                     return;
                 }
                 

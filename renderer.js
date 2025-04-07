@@ -832,8 +832,254 @@ function initializeImport() {
         }
     }
     
-    // Function to display iFleet data from the database
+    // Display iFleet imported data
     async function displayIFleetImportedData() {
-        importedRecords.innerHTML = '<p>iFleet data display not implemented yet.</p>';
+        try {
+            const { ipcRenderer } = require('electron');
+            const data = await ipcRenderer.invoke('get-ifleet-data');
+            
+            if (!data || data.length === 0) {
+                importedRecords.innerHTML = '<p>No iFleet data available.</p>';
+                return;
+            }
+            
+            // Group by plate number and filter out duplicates
+            const groupedByPlate = {};
+            const seenEntries = new Set(); // Track unique entries
+            
+            data.forEach(record => {
+                const plate = record.platenumber || 'Unknown';
+                // Skip invalid plate numbers/header data
+                if (plate.toLowerCase().includes('rendszám') || 
+                    plate.toLowerCase().includes('terület') || 
+                    plate.toLowerCase().includes('telephely')) {
+                    return;
+                }
+                
+                // Create a unique key for this record to deduplicate
+                const uniqueKey = `${plate}-${record.timestamp}-${record.area_name}-${record.direction}`;
+                if (seenEntries.has(uniqueKey)) {
+                    return; // Skip duplicates
+                }
+                seenEntries.add(uniqueKey);
+                
+                if (!groupedByPlate[plate]) {
+                    groupedByPlate[plate] = [];
+                }
+                groupedByPlate[plate].push(record);
+            });
+            
+            // Get unique valid plate numbers
+            const validPlates = Object.keys(groupedByPlate).filter(plate => 
+                plate !== 'Unknown' && 
+                (plate.includes('-') && plate.length >= 5 && plate.length <= 10)
+            );
+            
+            // Sort plate numbers alphabetically
+            validPlates.sort();
+            
+            // Count total records after deduplication
+            const totalRecords = Object.values(groupedByPlate).reduce(
+                (sum, records) => sum + records.length, 0
+            );
+            
+            let html = `
+                <div class="table-summary">
+                    <p>Showing ${totalRecords} records for ${validPlates.length} vehicles.</p>
+                </div>
+            `;
+            
+            // Create selection dropdown for vehicles
+            html += `
+                <div class="vehicle-filter">
+                    <select id="vehicle-selector" class="form-control select-dropdown">
+                        <option value="">-- Select Vehicle --</option>
+                        ${validPlates.map(plate => `<option value="${plate}">${plate} (${groupedByPlate[plate].length} records)</option>`).join('')}
+                    </select>
+                </div>
+            `;
+            
+            // Add confirm import button
+            html += `
+                <div class="preview-controls preview-button-container">
+                    <button id="confirm-ifleet-import" class="btn btn-success import-btn">Import to DB</button>
+                    <button id="cancel-ifleet-import" class="btn btn-secondary">Clear</button>
+                </div>
+            `;
+            
+            // Create a table for data display
+            html += `
+                <div class="data-table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Plate Number</th>
+                                <th>Timestamp</th>
+                                <th>Area Name</th>
+                                <th>Direction</th>
+                                <th>Time Spent</th>
+                                <th>Distance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vehicle-data">
+                            <tr>
+                                <td colspan="6" class="text-center">Select a vehicle to view data</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            // Render the HTML
+            importedRecords.innerHTML = html;
+            
+            // Create a map of formatted records for each vehicle
+            const formattedRecords = {};
+            
+            validPlates.forEach(plate => {
+                const records = groupedByPlate[plate];
+                
+                // Sort records by timestamp
+                records.sort((a, b) => {
+                    return new Date(a.timestamp) - new Date(b.timestamp);
+                });
+                
+                // Format the records for rendering
+                formattedRecords[plate] = records.map(record => {
+                    // Format timestamp
+                    let timestamp = record.timestamp;
+                    if (timestamp) {
+                        try {
+                            const date = new Date(timestamp);
+                            if (!isNaN(date.getTime())) {
+                                timestamp = date.toLocaleString();
+                            }
+                        } catch (e) {
+                            // Keep as is if can't parse
+                        }
+                    }
+                    
+                    // Format time spent as HH:MM
+                    let timeSpent = '';
+                    if (record.time_spent !== null && record.time_spent !== undefined) {
+                        const hours = Math.floor(record.time_spent / 60);
+                        const minutes = record.time_spent % 60;
+                        timeSpent = `${hours}:${minutes.toString().padStart(2, '0')}`;
+                    }
+                    
+                    // Remove "Telephely" from area_name
+                    let areaName = record.area_name || '';
+                    areaName = areaName.replace(/\s+Telephely$/i, '');
+                    
+                    return {
+                        platenumber: record.platenumber || '',
+                        timestamp: timestamp || '',
+                        area_name: areaName,
+                        direction: record.direction || '',
+                        timeSpent: timeSpent,
+                        distance: record.distance !== null ? record.distance : ''
+                    };
+                });
+            });
+            
+            // Add event listener to the vehicle selector
+            const vehicleSelector = document.getElementById('vehicle-selector');
+            if (vehicleSelector) {
+                vehicleSelector.addEventListener('change', function() {
+                    const selectedPlate = this.value;
+                    const vehicleDataContainer = document.getElementById('vehicle-data');
+                    
+                    if (!selectedPlate || !vehicleDataContainer) {
+                        vehicleDataContainer.innerHTML = `
+                            <tr>
+                                <td colspan="6" class="text-center">Please select a vehicle</td>
+                            </tr>
+                        `;
+                        return;
+                    }
+                    
+                    const records = formattedRecords[selectedPlate] || [];
+                    
+                    if (records.length === 0) {
+                        vehicleDataContainer.innerHTML = `
+                            <tr>
+                                <td colspan="6" class="text-center">No records found for ${selectedPlate}</td>
+                            </tr>
+                        `;
+                        return;
+                    }
+                    
+                    // Render the records
+                    let rowsHtml = '';
+                    records.forEach(record => {
+                        rowsHtml += `
+                            <tr>
+                                <td>${record.platenumber}</td>
+                                <td>${record.timestamp}</td>
+                                <td>${record.area_name}</td>
+                                <td>${record.direction}</td>
+                                <td>${record.timeSpent}</td>
+                                <td>${record.distance}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    vehicleDataContainer.innerHTML = rowsHtml;
+                });
+            }
+            
+            // Add event listener for confirm import button
+            const confirmImportBtn = document.getElementById('confirm-ifleet-import');
+            if (confirmImportBtn) {
+                confirmImportBtn.addEventListener('click', async function() {
+                    try {
+                        if (importLoading) importLoading.style.display = 'flex';
+                        showImportStatus('Importing valid vehicle data to database...', 'info');
+                        
+                        // Filter data to include only valid plate numbers
+                        const validData = data.filter(record => {
+                            const plate = record.platenumber || '';
+                            return validPlates.includes(plate);
+                        });
+                        
+                        // Trigger the final database update with only valid plate numbers
+                        const result = await ipcRenderer.invoke('confirm-ifleet-import', validData);
+                        
+                        if (importLoading) importLoading.style.display = 'none';
+                        
+                        if (result && result.success) {
+                            showImportStatus(`Successfully imported ${validPlates.length} vehicles to database`, 'success');
+                            
+                            // Dispatch event similar to SysWeb
+                            const event = new CustomEvent('ifleet-import-confirmed', {
+                                detail: { 
+                                    data: validData,
+                                    success: true
+                                }
+                            });
+                            document.dispatchEvent(event);
+                        } else {
+                            showImportStatus(`Error importing data: ${result ? result.message : 'Unknown error'}`, 'error');
+                        }
+                    } catch (error) {
+                        if (importLoading) importLoading.style.display = 'none';
+                        showImportStatus(`Error confirming import: ${error.message}`, 'error');
+                    }
+                });
+            }
+            
+            // Add event listener for cancel button
+            const cancelImportBtn = document.getElementById('cancel-ifleet-import');
+            if (cancelImportBtn) {
+                cancelImportBtn.addEventListener('click', function() {
+                    // Simply reload the current view
+                    displayIFleetImportedData();
+                    showImportStatus('Import cancelled', 'info');
+                });
+            }
+        } catch (error) {
+            console.error('Error displaying iFleet data:', error);
+            importedRecords.innerHTML = `<p class="error">Error loading iFleet data: ${error.message}</p>`;
+        }
     }
 } 
