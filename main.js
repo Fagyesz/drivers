@@ -22,10 +22,9 @@ const issueManager = require('./src/issues');
 const dbPath = path.join(app.getPath('appData'), 'driver-alerts', 'database', 'driverAlerts.db');
 const database = new DriverAlertsDatabase(dbPath);
 
-// Ensure the stop_events_alert table has the correct structure
+// Ensure the stop_events_alert table exists with the correct structure
 database.db.exec(`
-  DROP TABLE IF EXISTS stop_events_alert;
-  CREATE TABLE stop_events_alert (
+  CREATE TABLE IF NOT EXISTS stop_events_alert (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     plate_number TEXT NOT NULL,
     arrival_time TEXT NOT NULL,
@@ -37,7 +36,7 @@ database.db.exec(`
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `);
-console.log('Recreated stop_events_alert table with correct structure');
+console.log('stop_events_alert table exists or was created');
 
 let mainWindow;
 
