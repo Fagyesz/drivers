@@ -1200,4 +1200,76 @@ ipcMain.handle('confirm-alert-import', async (event, validData) => {
       error: error.message
     };
   }
+});
+
+// Handler for importing routes Excel file
+ipcMain.handle('import-routes-excel', async (event, filePath) => {
+  try {
+    logger.info('Importing Routes Excel file', { file: filePath });
+    
+    // Use our parser and database import
+    const records = await excelParser.parseRoutesExcel(filePath);
+    console.log(`Parsed ${records.length} route records`);
+    
+    if (records && records.length > 0) {
+      // Import the records to the database
+      const result = await database.importRoutesData(records);
+      
+      return {
+        success: true,
+        message: `Successfully imported ${result.success} route records. ${result.errors} errors.`,
+        data: result
+      };
+    } else {
+      return {
+        success: false,
+        message: 'No route records found in the Excel file.',
+        data: { success: 0, errors: 0, total: 0 }
+      };
+    }
+  } catch (error) {
+    console.error('Error importing Routes Excel:', error);
+    return {
+      success: false,
+      message: `Error importing Routes Excel: ${error.message}`,
+      error: error.message
+    };
+  }
+});
+
+// Handler for retrieving routes data
+ipcMain.handle('get-routes-data', async (event, filters = {}) => {
+  try {
+    const routesData = await database.getRoutesData(filters);
+    console.log(`Retrieved ${routesData.length} records from routes table`);
+    return routesData;
+  } catch (error) {
+    console.error('Error getting routes data:', error);
+    return [];
+  }
+});
+
+// Register the confirm-routes-import handler
+ipcMain.handle('confirm-routes-import', async (event, validData) => {
+  try {
+    logger.info('Confirming routes data import to database', { count: validData.length });
+    
+    // Import the valid records to the database
+    const result = await database.importRoutesData(validData);
+    
+    return {
+      success: true,
+      message: `Successfully imported ${result.success} route records. ${result.errors} errors.`,
+      data: result
+    };
+  } catch (error) {
+    console.error('Error confirming routes import:', error);
+    logger.error('Error confirming routes import', { error: error.message });
+    
+    return {
+      success: false,
+      message: `Error confirming routes import: ${error.message}`,
+      error: error.message
+    };
+  }
 }); 

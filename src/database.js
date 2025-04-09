@@ -156,6 +156,25 @@ class DriverAlertsDatabase {
           created_at TEXT DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
+      `,
+      routes: `
+        CREATE TABLE IF NOT EXISTS routes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          route_code INTEGER NOT NULL,
+          vehicle_code TEXT NOT NULL,
+          date TEXT NOT NULL,
+          driver TEXT,
+          weight_capacity INTEGER,
+          depot TEXT,
+          start_date TEXT,
+          delivery_records_count INTEGER,
+          transport_code TEXT,
+          journey_number INTEGER,
+          processed BOOLEAN DEFAULT 0,
+          import_date TEXT NOT NULL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
       `
     };
 
@@ -1027,6 +1046,121 @@ class DriverAlertsDatabase {
   // Get alerts with optional filtering
   async getAlerts(plateNumber = null, fromDate = null, toDate = null, onlyImportant = false) {
     // Implementation of getAlerts method
+  }
+
+  /**
+   * Import routes data into the database
+   * @param {Array} data - Array of route records
+   * @returns {Object} Result of the import operation
+   */
+  async importRoutesData(data) {
+    try {
+      console.log(`Importing ${data.length} route records to database`);
+      
+      const result = { success: 0, errors: 0, total: data.length };
+      
+      // Prepare SQL statement
+      const stmt = this.db.prepare(`
+        INSERT INTO routes (
+          route_code,
+          vehicle_code,
+          date,
+          driver,
+          weight_capacity,
+          depot,
+          start_date,
+          delivery_records_count,
+          transport_code,
+          journey_number,
+          processed,
+          import_date,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `);
+      
+      // Use a transaction for better performance
+      const transaction = this.db.transaction((records) => {
+        // Process each record
+        for (const record of records) {
+          try {
+            stmt.run(
+              record.route_code,
+              record.vehicle_code,
+              record.date,
+              record.driver || null,
+              record.weight_capacity || null,
+              record.depot || null,
+              record.start_date || null,
+              record.delivery_records_count || null,
+              record.transport_code || null,
+              record.journey_number || null,
+              0, // Not processed by default
+              record.import_date
+            );
+            result.success++;
+          } catch (error) {
+            console.error('Error inserting route record:', error, record);
+            result.errors++;
+          }
+        }
+      });
+      
+      // Execute the transaction
+      transaction(data);
+      
+      console.log('Routes import completed with result:', result);
+      return result;
+    } catch (error) {
+      console.error('Error importing routes data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get routes data from the database
+   * @param {Object} filters - Optional filters
+   * @returns {Array} Array of route records
+   */
+  async getRoutesData(filters = {}) {
+    try {
+      let query = 'SELECT * FROM routes';
+      const queryParams = [];
+      
+      // Apply filters if provided
+      if (Object.keys(filters).length > 0) {
+        query += ' WHERE';
+        
+        if (filters.vehicle_code) {
+          query += ' vehicle_code = ?';
+          queryParams.push(filters.vehicle_code);
+        }
+        
+        if (filters.date) {
+          if (queryParams.length > 0) query += ' AND';
+          query += ' date = ?';
+          queryParams.push(filters.date);
+        }
+        
+        if (filters.depot) {
+          if (queryParams.length > 0) query += ' AND';
+          query += ' depot = ?';
+          queryParams.push(filters.depot);
+        }
+      }
+      
+      // Add order by
+      query += ' ORDER BY date DESC, route_code DESC';
+      
+      // Execute the query
+      const stmt = this.db.prepare(query);
+      const result = queryParams.length > 0 ? stmt.all(...queryParams) : stmt.all();
+      
+      return result;
+    } catch (error) {
+      console.error('Error getting routes data:', error);
+      return [];
+    }
   }
 }
 

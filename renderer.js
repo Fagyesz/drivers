@@ -541,6 +541,15 @@ function initializeImport() {
     const { displaySysWebPreview } = excelPreview;
     
     if (importTypeSelector) {
+        // Update the options to include the new import type
+        importTypeSelector.innerHTML = `
+            <option value="autodetect">Auto-detect</option>
+            <option value="sysweb">SysWeb</option>
+            <option value="alerts">Alerts</option>
+            <option value="ifleet">iFleet</option>
+            <option value="routes">Routes (Járatok)</option>
+        `;
+        
         importTypeSelector.addEventListener('change', (event) => {
             currentImportType = event.target.value;
             rendererLogger.info(`Import type changed to: ${currentImportType}`);
@@ -642,6 +651,7 @@ function initializeImport() {
                     case 'alerts':
                     case 'ifleet':
                     case 'autodetect':
+                    case 'routes':
                     default:
                         // For other types, proceed directly to import
                         rendererLogger.info(`Importing ${currentImportType} data directly`, { filePath: excelFilePath });
@@ -735,6 +745,9 @@ function initializeImport() {
             case 'ifleet':
                 result = await ipcRenderer.invoke('import-ifleet-excel', filePath);
                 break;
+            case 'routes':
+                result = await ipcRenderer.invoke('import-routes-excel', filePath);
+                break;
             case 'autodetect':
             default:
                 result = await ipcRenderer.invoke('import-autodetect-excel', filePath);
@@ -773,6 +786,9 @@ function initializeImport() {
                 break;
             case 'ifleet':
                 displayIFleetImportedData();
+                break;
+            case 'routes':
+                displayRoutesImportedData();
                 break;
             default:
                 importedRecords.innerHTML = '<p>No data available to display.</p>';
@@ -1428,6 +1444,196 @@ function initializeImport() {
         } catch (error) {
             console.error('Error displaying iFleet data:', error);
             importedRecords.innerHTML = `<p class="error">Error loading iFleet data: ${error.message}</p>`;
+        }
+    }
+
+    // Function to display Routes data from the database
+    async function displayRoutesImportedData() {
+        try {
+            const { ipcRenderer } = require('electron');
+            const data = await ipcRenderer.invoke('get-routes-data');
+            
+            if (!data || data.length === 0) {
+                importedRecords.innerHTML = '<p>No routes data available. Import data first.</p>';
+                return;
+            }
+            
+            // Group by depot
+            const groupedByDepot = {};
+            
+            data.forEach(record => {
+                const depot = record.depot || 'Unknown';
+                
+                if (!groupedByDepot[depot]) {
+                    groupedByDepot[depot] = [];
+                }
+                
+                groupedByDepot[depot].push(record);
+            });
+            
+            // Get unique depots
+            const depots = Object.keys(groupedByDepot);
+            
+            // Helper function to format a date
+            function formatDate(dateStr) {
+                if (!dateStr) return '';
+                
+                try {
+                    const date = new Date(dateStr);
+                    if (!isNaN(date.getTime())) {
+                        return date.toLocaleDateString();
+                    }
+                    return dateStr;
+                } catch (e) {
+                    return dateStr;
+                }
+            }
+            
+            let html = `
+                <div class="table-summary">
+                    <p>Showing ${data.length} route records from ${depots.length} depots.</p>
+                </div>
+            `;
+            
+            // Create selection dropdown for depots
+            html += `
+                <div class="depot-filter">
+                    <select id="route-depot-selector" class="form-control select-dropdown">
+                        <option value="">-- All Depots --</option>
+                        ${depots.map(depot => `<option value="${depot}">${depot} (${groupedByDepot[depot].length} routes)</option>`).join('')}
+                    </select>
+                </div>
+            `;
+            
+            // Add confirm import button
+            html += `
+                <div class="preview-controls preview-button-container">
+                    <button id="confirm-routes-import" class="btn btn-success import-btn">Import to DB</button>
+                    <button id="cancel-routes-import" class="btn btn-secondary clear-btn">Clear</button>
+                </div>
+            `;
+            
+            // Create a table for data display
+            html += `
+                <div class="data-table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Route Code</th>
+                                <th>Vehicle Code</th>
+                                <th>Date</th>
+                                <th>Driver</th>
+                                <th>Depot</th>
+                                <th>Weight Capacity</th>
+                                <th>Transport Code</th>
+                                <th>Delivery Records</th>
+                            </tr>
+                        </thead>
+                        <tbody id="route-data">
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            // Render the HTML
+            importedRecords.innerHTML = html;
+            
+            // Function to display records in the table
+            function displayRecords(records) {
+                const routeDataContainer = document.getElementById('route-data');
+                if (!routeDataContainer) return;
+                
+                if (!records || records.length === 0) {
+                    routeDataContainer.innerHTML = `
+                        <tr>
+                            <td colspan="8" class="text-center">No records found</td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                // Sort records by date and route code
+                records.sort((a, b) => {
+                    const dateA = new Date(a.date || 0);
+                    const dateB = new Date(b.date || 0);
+                    
+                    if (dateA - dateB !== 0) {
+                        return dateB - dateA; // Most recent first
+                    }
+                    
+                    return b.route_code - a.route_code; // Higher route codes first
+                });
+                
+                // Render the records
+                let rowsHtml = '';
+                records.forEach(record => {
+                    rowsHtml += `
+                        <tr>
+                            <td>${record.route_code}</td>
+                            <td>${record.vehicle_code}</td>
+                            <td>${formatDate(record.date)}</td>
+                            <td>${record.driver || ''}</td>
+                            <td>${record.depot || ''}</td>
+                            <td>${record.weight_capacity || ''}</td>
+                            <td>${record.transport_code || ''}</td>
+                            <td>${record.delivery_records_count || ''}</td>
+                        </tr>
+                    `;
+                });
+                
+                routeDataContainer.innerHTML = rowsHtml;
+            }
+            
+            // Display all records by default
+            displayRecords(data);
+            
+            // Add event listener to the depot selector
+            const depotSelector = document.getElementById('route-depot-selector');
+            if (depotSelector) {
+                depotSelector.addEventListener('change', function() {
+                    const selectedDepot = this.value;
+                    
+                    if (selectedDepot) {
+                        // Display only records for the selected depot
+                        displayRecords(groupedByDepot[selectedDepot]);
+                    } else {
+                        // Display all records
+                        displayRecords(data);
+                    }
+                });
+            }
+            
+            // Add event listener to confirm import button
+            const confirmImportBtn = document.getElementById('confirm-routes-import');
+            if (confirmImportBtn) {
+                confirmImportBtn.addEventListener('click', async function() {
+                    try {
+                        if (importLoading) importLoading.style.display = 'flex';
+                        showImportStatus('Importing valid route data to database...', 'info');
+                        
+                        // Prepare data for import - could filter here if needed
+                        const result = await ipcRenderer.invoke('confirm-routes-import', data);
+                        
+                        showImportStatus(result.message, result.success ? 'success' : 'error');
+                    } catch (error) {
+                        showImportStatus(`Error: ${error.message}`, 'error');
+                    } finally {
+                        if (importLoading) importLoading.style.display = 'none';
+                    }
+                });
+            }
+            
+            // Add event listener to cancel import button
+            const cancelImportBtn = document.getElementById('cancel-routes-import');
+            if (cancelImportBtn) {
+                cancelImportBtn.addEventListener('click', function() {
+                    importedRecords.innerHTML = '';
+                });
+            }
+            
+        } catch (error) {
+            console.error('Error displaying routes data:', error);
+            importedRecords.innerHTML = `<p class="error">Error displaying data: ${error.message}</p>`;
         }
     }
 } 

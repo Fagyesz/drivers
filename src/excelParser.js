@@ -1205,6 +1205,109 @@ class ExcelParser {
             throw new Error(`Failed to parse iFleet Excel: ${error.message}`);
         }
     }
+
+    /**
+     * Parse Routes Excel format (Járatok)
+     * @param {string} filePath - Path to the Excel file
+     * @returns {Array} Array of records in the correct format for the routes table
+     */
+    async parseRoutesExcel(filePath) {
+        try {
+            logger.info('Starting Routes Excel parsing from:', filePath);
+            
+            // Verify file exists
+            if (!fs.existsSync(filePath)) {
+                logger.error(`File does not exist: ${filePath}`);
+                throw new Error(`File not found: ${filePath}`);
+            }
+            
+            // Load the workbook
+            const workbook = XLSX.readFile(filePath);
+            
+            // Find the 'Járatok' sheet or use the first sheet
+            const sheetName = workbook.SheetNames.find(name => name === 'Járatok') || workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            
+            // Convert sheet to JSON
+            const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+            
+            // Identify the header row
+            const headerRow = rawData[0];
+            
+            // Define column mappings
+            const columnMappings = {
+                'Járatkód': 'route_code',
+                'Járműkód': 'vehicle_code',
+                'Dátum': 'date',
+                'Sofőr': 'driver',
+                'Tömeg kapacitás': 'weight_capacity',
+                'Telephely': 'depot',
+                'Elindítás dátuma': 'start_date',
+                'Szállítás rekordok száma': 'delivery_records_count',
+                'Fuvarkör kód': 'transport_code',
+                'Menetszám': 'journey_number'
+            };
+            
+            // Get the current date as ISO string for import_date
+            const importDate = new Date().toISOString();
+            
+            // Map the columns
+            const data = [];
+            for (let i = 1; i < rawData.length; i++) {
+                const row = rawData[i];
+                if (!row || row.length === 0) continue;
+                
+                const record = {};
+                
+                // Map each column using the header names
+                headerRow.forEach((header, index) => {
+                    if (header && columnMappings[header]) {
+                        const fieldName = columnMappings[header];
+                        record[fieldName] = row[index];
+                    }
+                });
+                
+                // Convert date values (Excel date format) to ISO string
+                if (record.date) {
+                    record.date = this.excelDateToString(record.date);
+                }
+                
+                if (record.start_date) {
+                    record.start_date = this.excelDateToString(record.start_date);
+                }
+                
+                // Add import_date
+                record.import_date = importDate;
+                
+                // Add the record if it has at least the route code and vehicle code
+                if (record.route_code && record.vehicle_code) {
+                    data.push(record);
+                }
+            }
+            
+            logger.info(`Parsed ${data.length} route records`);
+            return data;
+        } catch (error) {
+            logger.error('Error parsing Routes Excel:', { error: error.message });
+            throw new Error(`Failed to parse Routes Excel: ${error.message}`);
+        }
+    }
+
+    /**
+     * Convert Excel date number to ISO string
+     * @param {number} excelDate - Excel date number
+     * @returns {string} ISO date string
+     */
+    excelDateToString(excelDate) {
+        // Excel dates are days since 1899-12-30
+        // JavaScript dates are milliseconds since 1970-01-01
+        if (typeof excelDate !== 'number') {
+            return excelDate;
+        }
+        
+        const date = new Date(Math.round((excelDate - 25569) * 86400 * 1000));
+        return date.toISOString().split('T')[0]; // Return YYYY-MM-DD
+    }
 }
 
 module.exports = new ExcelParser(); 
