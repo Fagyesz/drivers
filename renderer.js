@@ -616,7 +616,7 @@ function initializeImport() {
         });
     }
     
-    // Process data button - remove existing listeners first
+    // Process data button - add immediate display for successfully imported data
     if (importDataBtn) {
         // Remove existing listeners to prevent duplicates
         const newImportBtn = importDataBtn.cloneNode(true);
@@ -644,6 +644,7 @@ function initializeImport() {
                 // Parse based on the import type
                 switch (currentImportType) {
                     case 'worktime':
+                    case 'sysweb':
                         // For SysWeb/worktime, we need to preview first
                         rendererLogger.info('Parsing SysWeb data for preview', { filePath: excelFilePath });
                         result = await ipcRenderer.invoke('parse-sysweb-excel', excelFilePath);
@@ -665,7 +666,7 @@ function initializeImport() {
                 
                 if (result && result.success) {
                     // For SysWeb/worktime, show preview before final import
-                    if (currentImportType === 'worktime' && result.data) {
+                    if ((currentImportType === 'worktime' || currentImportType === 'sysweb') && result.data) {
                         previewData = result.data;
                         showImportStatus('Data parsed successfully. Please review and confirm import.', 'success');
                         
@@ -674,6 +675,8 @@ function initializeImport() {
                     } else {
                         // For other types, we already performed the import
                         showImportStatus(result.message, 'success');
+                        
+                        // Immediately show the imported data
                         displayImportedData(currentImportType);
                     }
                 } else {
@@ -748,6 +751,9 @@ function initializeImport() {
             case 'routes':
                 result = await ipcRenderer.invoke('import-routes-excel', filePath);
                 break;
+            case 'sysweb':
+                result = await ipcRenderer.invoke('import-sysweb-excel', filePath);
+                break;
             case 'autodetect':
             default:
                 result = await ipcRenderer.invoke('import-autodetect-excel', filePath);
@@ -779,6 +785,7 @@ function initializeImport() {
         // Different display logic based on data type
         switch (dataType) {
             case 'worktime':
+            case 'sysweb':  // Add support for the 'sysweb' type from dropdown
                 displaySysWebImportedData();
                 break;
             case 'alerts':
@@ -822,31 +829,84 @@ function initializeImport() {
             const data = await ipcRenderer.invoke('get-sysweb-data');
             
             if (!data || data.length === 0) {
-                importedRecords.innerHTML = '<p>No SysWeb data found in the database.</p>';
+                importedRecords.innerHTML = '<div class="empty-state"><p>No SysWeb data found in the database.</p><p>Import data first to see records here.</p></div>';
                 return;
             }
             
+            // Process and prepare data
+            const processedData = data.map(record => {
+                return {
+                    ...record,
+                    // Ensure dates are properly formatted
+                    formattedDate: formatDateYYYYMMDD(record.date),
+                    formattedCheckIn: record.check_in || '',
+                    formattedCheckOut: record.check_out || '',
+                    // Calculate duration if possible
+                    duration: calculateDuration(record.check_in, record.check_out)
+                };
+            });
+            
             // Group by name for display
             const groupedData = {};
-            data.forEach(record => {
+            processedData.forEach(record => {
                 if (!groupedData[record.name]) {
                     groupedData[record.name] = [];
                 }
                 groupedData[record.name].push(record);
             });
             
+            // Sort each person's records by date (newest first)
+            Object.keys(groupedData).forEach(name => {
+                groupedData[name].sort((a, b) => {
+                    const dateA = new Date(a.date);
+                    const dateB = new Date(b.date);
+                    return dateB - dateA; // Newest first
+                });
+            });
+            
+            // Generate summary
+            const totalPeople = Object.keys(groupedData).length;
+            const totalRecords = processedData.length;
+            
             let html = `
-                <div class="table-summary">
-                    <p>Showing ${data.length} records for ${Object.keys(groupedData).length} people.</p>
+                <div class="dashboard-summary">
+                    <div class="summary-card">
+                        <div class="summary-title">Total Employees</div>
+                        <div class="summary-value">${totalPeople}</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-title">Total Records</div>
+                        <div class="summary-value">${totalRecords}</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-title">Date Range</div>
+                        <div class="summary-value">${getDateRange(processedData)}</div>
+                    </div>
                 </div>
+                
+                <div class="filter-controls">
+                    <div class="search-box">
+                        <input type="text" id="sysweb-search" class="form-control" placeholder="Search by name or job title...">
+                    </div>
+                    <div class="sort-controls">
+                        <label for="sort-select">Sort by:</label>
+                        <select id="sort-select" class="form-control">
+                            <option value="name-asc">Name (A-Z)</option>
+                            <option value="name-desc">Name (Z-A)</option>
+                            <option value="date-desc" selected>Date (Newest First)</option>
+                            <option value="date-asc">Date (Oldest First)</option>
+                        </select>
+                    </div>
+                </div>
+                
                 <div class="table-container">
-                    <table class="data-table">
+                    <table class="data-table" id="sysweb-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Job Title</th>
-                                <th>Cost Center</th>
-                                <th>Date</th>
+                                <th class="sortable" data-sort="name">Name</th>
+                                <th class="sortable" data-sort="jobtitle">Job Title</th>
+                                <th class="sortable" data-sort="costcenter">Cost Center</th>
+                                <th class="sortable" data-sort="date">Date</th>
                                 <th>Planned Shift</th>
                                 <th>Actual</th>
                                 <th>Check In</th>
@@ -857,20 +917,41 @@ function initializeImport() {
                         <tbody>
             `;
             
-            data.forEach(record => {
+            // Sort people alphabetically initially
+            const sortedNames = Object.keys(groupedData).sort();
+            
+            // Add rows for each person's records
+            sortedNames.forEach(name => {
+                const personRecords = groupedData[name];
+                
+                // Add a subtle group header
                 html += `
-                    <tr>
-                        <td>${record.name || ''}</td>
-                        <td>${record.jobtitle || ''}</td>
-                        <td>${record.costcenter || ''}</td>
-                        <td>${formatDateYYYYMMDD(record.date) || ''}</td>
-                        <td>${record.planedshift || ''}</td>
-                        <td>${record.actual || ''}</td>
-                        <td>${record.check_in || ''}</td>
-                        <td>${record.check_out || ''}</td>
-                        <td>${record.workedTime || ''}</td>
+                    <tr class="group-header">
+                        <td colspan="9">
+                            <div class="person-header">
+                                <span class="person-name">${name}</span>
+                                <span class="record-count">${personRecords.length} records</span>
+                            </div>
+                        </td>
                     </tr>
                 `;
+                
+                // Add individual records
+                personRecords.forEach(record => {
+                    html += `
+                        <tr data-name="${record.name}" data-date="${record.formattedDate}">
+                            <td>${record.name || ''}</td>
+                            <td>${record.jobtitle || ''}</td>
+                            <td>${record.costcenter || ''}</td>
+                            <td>${record.formattedDate}</td>
+                            <td>${record.planedshift || ''}</td>
+                            <td>${record.actual || ''}</td>
+                            <td>${record.formattedCheckIn}</td>
+                            <td>${record.formattedCheckOut}</td>
+                            <td>${record.workedTime || record.duration || ''}</td>
+                        </tr>
+                    `;
+                });
             });
             
             html += `
@@ -880,798 +961,232 @@ function initializeImport() {
             `;
             
             importedRecords.innerHTML = html;
+            
+            // Add event listeners for sorting and filtering
+            setupSysWebTableInteractions();
+            
         } catch (error) {
             rendererLogger.error('Error displaying SysWeb data', { error: error.message });
             importedRecords.innerHTML = `<p class="error">Error displaying data: ${error.message}</p>`;
         }
     }
     
-    // Function to display Alerts data from the database
-    async function displayAlertsImportedData() {
+    // Helper function to calculate duration between check-in and check-out
+    function calculateDuration(checkIn, checkOut) {
+        if (!checkIn || !checkOut) return '';
+        
         try {
-            const { ipcRenderer } = require('electron');
-            const data = await ipcRenderer.invoke('get-alerts-data');
+            // Parse the time values (assuming format like "08:30")
+            const [inHours, inMinutes] = checkIn.split(':').map(Number);
+            const [outHours, outMinutes] = checkOut.split(':').map(Number);
             
-            if (!data || data.length === 0) {
-                importedRecords.innerHTML = '<p>No alert data available. Import data first.</p>';
-                return;
+            if (isNaN(inHours) || isNaN(inMinutes) || isNaN(outHours) || isNaN(outMinutes)) {
+                return '';
             }
             
-            // Group by plate number and filter out duplicates
-            const groupedByPlate = {};
-            const seenEntries = new Set(); // Track unique entries
-            const allRecords = []; // Keep track of all valid records for initial display
+            // Calculate total minutes
+            const inTotalMinutes = inHours * 60 + inMinutes;
+            const outTotalMinutes = outHours * 60 + outMinutes;
+            let diffMinutes = outTotalMinutes - inTotalMinutes;
             
-            data.forEach(record => {
-                const plate = record.plate_number || 'Unknown';
-                // Skip invalid plate numbers/header data
-                if (plate.toLowerCase().includes('rendszám') || 
-                    plate.toLowerCase().includes('terület') || 
-                    plate.toLowerCase().includes('telephely') ||
-                    plate === 'Unknown' ||
-                    !isValidPlateNumber(plate)) {
-                    return;
-                }
-                
-                // Create a unique key for this record to deduplicate
-                const uniqueKey = `${plate}-${record.arrival_time}-${record.position}`;
-                if (seenEntries.has(uniqueKey)) {
-                    return; // Skip duplicates
-                }
-                seenEntries.add(uniqueKey);
-                
-                if (!groupedByPlate[plate]) {
-                    groupedByPlate[plate] = [];
-                }
-                
-                // Format the record
-                const formattedRecord = formatAlertRecord(record);
-                groupedByPlate[plate].push(formattedRecord);
-                allRecords.push(formattedRecord); // Add to all records for initial display
-            });
-            
-            // Get unique valid plate numbers
-            const validPlates = Object.keys(groupedByPlate).filter(plate => 
-                isValidPlateNumber(plate)
-            );
-            
-            // Helper function to format a record
-            function formatAlertRecord(record) {
-                // Format arrival time
-                let arrivalTime = record.arrival_time;
-                if (arrivalTime) {
-                    try {
-                        const date = new Date(arrivalTime);
-                        if (!isNaN(date.getTime())) {
-                            // Format as YYYY-MM-DD HH:MM:SS
-                            const year = date.getFullYear();
-                            const month = String(date.getMonth() + 1).padStart(2, '0');
-                            const day = String(date.getDate()).padStart(2, '0');
-                            const hours = String(date.getHours()).padStart(2, '0');
-                            const minutes = String(date.getMinutes()).padStart(2, '0');
-                            const seconds = String(date.getSeconds()).padStart(2, '0');
-                            
-                            arrivalTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-                        }
-                    } catch (e) {
-                        // Keep as is if can't parse
-                    }
-                }
-                
-                // Keep the original important_point value as is - it contains company names
-                let importantPoint = record.important_point;
-                
-                return {
-                    plate_number: record.plate_number || '',
-                    arrival_time: arrivalTime || '',
-                    status: record.status || '',
-                    position: record.position || '',
-                    important_point: importantPoint
-                };
+            // Handle overnight shifts
+            if (diffMinutes < 0) {
+                diffMinutes += 24 * 60; // Add a day
             }
             
-            // Helper function to validate plate numbers
-            function isValidPlateNumber(plate) {
-                // Must contain hyphen, be between 5-10 chars, and not contain header-like terms
-                return plate !== 'Unknown' && 
-                       plate.includes('-') && 
-                       plate.length >= 5 && 
-                       plate.length <= 10 &&
-                       !plate.toLowerCase().includes('rendszám') &&
-                       !plate.toLowerCase().includes('terület') &&
-                       !plate.toLowerCase().includes('telephely') &&
-                       !plate.toLowerCase().includes('időpont') &&
-                       !plate.toLowerCase().includes('irány') &&
-                       !plate.toLowerCase().includes('töltött') &&
-                       !plate.toLowerCase().includes('megtett');
-            }
-            
-            // Count total records after deduplication
-            const totalRecords = Object.values(groupedByPlate).reduce(
-                (sum, records) => sum + records.length, 0
-            );
-            
-            let html = `
-                <div class="table-summary">
-                    <p>Showing ${totalRecords} records for ${validPlates.length} vehicles.</p>
-                </div>
-            `;
-            
-            // Create selection dropdown for vehicles
-            html += `
-                <div class="vehicle-filter">
-                    <select id="alert-vehicle-selector" class="form-control select-dropdown">
-                        <option value="">-- All Vehicles --</option>
-                        ${validPlates.map(plate => `<option value="${plate}">${plate} (${groupedByPlate[plate].length} records)</option>`).join('')}
-                    </select>
-                </div>
-            `;
-            
-            // Add confirm import button
-            html += `
-                <div class="preview-controls preview-button-container">
-                    <button id="confirm-alert-import" class="btn btn-success import-btn">Import to DB</button>
-                    <button id="cancel-alert-import" class="btn btn-secondary clear-btn">Clear</button>
-                </div>
-            `;
-            
-            // Create a table for data display
-            html += `
-                <div class="data-table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Plate Number</th>
-                                <th>Arrival Time</th>
-                                <th>Standing Duration</th>
-                                <th>Position</th>
-                                <th>Important Point</th>
-                            </tr>
-                        </thead>
-                        <tbody id="alert-vehicle-data">
-                        </tbody>
-                    </table>
-                </div>
-            `;
-            
-            // Render the HTML
-            importedRecords.innerHTML = html;
-            
-            // Create a map of formatted records for each vehicle
-            const formattedRecords = {};
-            
-            validPlates.forEach(plate => {
-                const records = groupedByPlate[plate];
-                
-                // Sort records by arrival time
-                records.sort((a, b) => {
-                    return new Date(a.arrival_time) - new Date(b.arrival_time);
-                });
-                
-                formattedRecords[plate] = records;
-            });
-            
-            // Function to display records in the table
-            function displayRecords(records) {
-                const vehicleDataContainer = document.getElementById('alert-vehicle-data');
-                if (!vehicleDataContainer) return;
-                
-                if (!records || records.length === 0) {
-                    vehicleDataContainer.innerHTML = `
-                        <tr>
-                            <td colspan="5" class="text-center">No records found</td>
-                        </tr>
-                    `;
-                    return;
-                }
-                
-                // Render the records
-                let rowsHtml = '';
-                records.forEach(record => {
-                    rowsHtml += `
-                        <tr>
-                            <td>${record.plate_number}</td>
-                            <td>${record.arrival_time}</td>
-                            <td>${record.status}</td>
-                            <td>${record.position}</td>
-                            <td>${record.important_point}</td>
-                        </tr>
-                    `;
-                });
-                
-                vehicleDataContainer.innerHTML = rowsHtml;
-            }
-            
-            // Display all records by default
-            displayRecords(allRecords);
-            
-            // Add event listener to the vehicle selector
-            const vehicleSelector = document.getElementById('alert-vehicle-selector');
-            if (vehicleSelector) {
-                vehicleSelector.addEventListener('change', function() {
-                    const selectedPlate = this.value;
-                    
-                    if (!selectedPlate) {
-                        // Show all records when "All Vehicles" is selected
-                        displayRecords(allRecords);
-                        return;
-                    }
-                    
-                    const records = formattedRecords[selectedPlate] || [];
-                    displayRecords(records);
-                });
-            }
-            
-            // Add event listener for confirm import button
-            const confirmImportBtn = document.getElementById('confirm-alert-import');
-            if (confirmImportBtn) {
-                confirmImportBtn.addEventListener('click', async function() {
-                    try {
-                        if (importLoading) importLoading.style.display = 'flex';
-                        showImportStatus('Importing valid alert data to database...', 'info');
-                        
-                        // Filter data to include only valid plate numbers AND deduplicate at the same time
-                        const uniqueRecords = new Map();
-                        
-                        // First pass - collect only valid plate records with unique keys
-                        data.forEach(record => {
-                            const plate = record.plate_number || '';
-                            
-                            // Skip records with invalid or header-like data
-                            if (!isValidPlateNumber(plate)) return;
-                            
-                            // Create a unique key for each record to avoid duplicates
-                            const uniqueKey = `${plate}-${record.arrival_time}-${record.position}`;
-                            
-                            // Only keep the first occurrence of each unique entry
-                            if (!uniqueRecords.has(uniqueKey)) {
-                                uniqueRecords.set(uniqueKey, record);
-                            }
-                        });
-                        
-                        // Convert the Map values to an array
-                        const validData = Array.from(uniqueRecords.values());
-                        
-                        // Log the deduplication results
-                        console.log(`Filtered from ${data.length} records to ${validData.length} unique records for import`);
-                        
-                        // Trigger the final database update with only unique valid plate numbers
-                        const result = await ipcRenderer.invoke('confirm-alert-import', validData);
-                        
-                        if (importLoading) importLoading.style.display = 'none';
-                        
-                        if (result && result.success) {
-                            showImportStatus(`Successfully imported ${validPlates.length} vehicles (${validData.length} unique records) to database`, 'success');
-                            
-                            // Dispatch event 
-                            const event = new CustomEvent('alert-import-confirmed', {
-                                detail: { 
-                                    data: validData,
-                                    success: true
-                                }
-                            });
-                            document.dispatchEvent(event);
-                        } else {
-                            showImportStatus(`Error importing data: ${result ? result.message : 'Unknown error'}`, 'error');
-                        }
-                    } catch (error) {
-                        if (importLoading) importLoading.style.display = 'none';
-                        showImportStatus(`Error confirming import: ${error.message}`, 'error');
-                    }
-                });
-            }
-            
-            // Add event listener for cancel button
-            const cancelImportBtn = document.getElementById('cancel-alert-import');
-            if (cancelImportBtn) {
-                cancelImportBtn.addEventListener('click', function() {
-                    // Simply reload the current view
-                    displayAlertsImportedData();
-                    showImportStatus('Import cancelled', 'info');
-                });
-            }
-        } catch (error) {
-            console.error('Error displaying alert data:', error);
-            importedRecords.innerHTML = `<p class="error">Error loading alert data: ${error.message}</p>`;
+            // Format as hours and minutes
+            const hours = Math.floor(diffMinutes / 60);
+            const minutes = diffMinutes % 60;
+            return `${hours}:${minutes.toString().padStart(2, '0')}`;
+        } catch (e) {
+            return '';
         }
     }
     
-    // Display iFleet imported data
-    async function displayIFleetImportedData() {
+    // Helper function to get date range from records
+    function getDateRange(records) {
+        if (!records || records.length === 0) return 'N/A';
+        
         try {
-            const { ipcRenderer } = require('electron');
-            const data = await ipcRenderer.invoke('get-ifleet-data');
+            const dates = records
+                .map(r => new Date(r.date))
+                .filter(d => !isNaN(d.getTime()))
+                .sort((a, b) => a - b);
             
-            if (!data || data.length === 0) {
-                importedRecords.innerHTML = '<p>No iFleet data available.</p>';
-                return;
-            }
+            if (dates.length === 0) return 'N/A';
             
-            // Group by plate number and filter out duplicates
-            const groupedByPlate = {};
-            const seenEntries = new Set(); // Track unique entries
+            const earliest = formatDateYYYYMMDD(dates[0]);
+            const latest = formatDateYYYYMMDD(dates[dates.length - 1]);
             
-            data.forEach(record => {
-                const plate = record.platenumber || 'Unknown';
-                // Skip invalid plate numbers/header data
-                if (plate.toLowerCase().includes('rendszám') || 
-                    plate.toLowerCase().includes('terület') || 
-                    plate.toLowerCase().includes('telephely') ||
-                    plate === 'Unknown' ||
-                    !isValidPlateNumber(plate)) {
-                    return;
-                }
-                
-                // Create a unique key for this record to deduplicate
-                const uniqueKey = `${plate}-${record.timestamp}-${record.area_name}-${record.direction}`;
-                if (seenEntries.has(uniqueKey)) {
-                    return; // Skip duplicates
-                }
-                seenEntries.add(uniqueKey);
-                
-                if (!groupedByPlate[plate]) {
-                    groupedByPlate[plate] = [];
-                }
-                groupedByPlate[plate].push(record);
-            });
-            
-            // Get unique valid plate numbers
-            const validPlates = Object.keys(groupedByPlate).filter(plate => 
-                isValidPlateNumber(plate)
-            );
-            
-            // Helper function to validate plate numbers
-            function isValidPlateNumber(plate) {
-                // Must contain hyphen, be between 5-10 chars, and not contain header-like terms
-                return plate !== 'Unknown' && 
-                       plate.includes('-') && 
-                       plate.length >= 5 && 
-                       plate.length <= 10 &&
-                       !plate.toLowerCase().includes('rendszám') &&
-                       !plate.toLowerCase().includes('terület') &&
-                       !plate.toLowerCase().includes('telephely') &&
-                       !plate.toLowerCase().includes('időpont') &&
-                       !plate.toLowerCase().includes('irány') &&
-                       !plate.toLowerCase().includes('töltött') &&
-                       !plate.toLowerCase().includes('megtett');
-            }
-            
-            // Count total records after deduplication
-            const totalRecords = Object.values(groupedByPlate).reduce(
-                (sum, records) => sum + records.length, 0
-            );
-            
-            let html = `
-                <div class="table-summary">
-                    <p>Showing ${totalRecords} records for ${validPlates.length} vehicles.</p>
-                </div>
-            `;
-            
-            // Create selection dropdown for vehicles
-            html += `
-                <div class="vehicle-filter">
-                    <select id="vehicle-selector" class="form-control select-dropdown">
-                        <option value="">-- Select Vehicle --</option>
-                        ${validPlates.map(plate => `<option value="${plate}">${plate} (${groupedByPlate[plate].length} records)</option>`).join('')}
-                    </select>
-                </div>
-            `;
-            
-            // Add confirm import button
-            html += `
-                <div class="preview-controls preview-button-container">
-                    <button id="confirm-ifleet-import" class="btn btn-success import-btn">Import to DB</button>
-                    <button id="cancel-ifleet-import" class="btn btn-secondary clear-btn">Clear</button>
-                </div>
-            `;
-            
-            // Create a table for data display
-            html += `
-                <div class="data-table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Plate Number</th>
-                                <th>Timestamp</th>
-                                <th>Area Name</th>
-                                <th>Direction</th>
-                                <th>Time Spent</th>
-                                <th>Distance</th>
-                            </tr>
-                        </thead>
-                        <tbody id="vehicle-data">
-                            <tr>
-                                <td colspan="6" class="text-center">Select a vehicle to view data</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            `;
-            
-            // Render the HTML
-            importedRecords.innerHTML = html;
-            
-            // Create a map of formatted records for each vehicle
-            const formattedRecords = {};
-            
-            validPlates.forEach(plate => {
-                const records = groupedByPlate[plate];
-                
-                // Sort records by timestamp
-                records.sort((a, b) => {
-                    return new Date(a.timestamp) - new Date(b.timestamp);
-                });
-                
-                // Format the records for rendering
-                formattedRecords[plate] = records.map(record => {
-                    // Format timestamp
-                    let timestamp = record.timestamp;
-                    if (timestamp) {
-                        try {
-                            const date = new Date(timestamp);
-                            if (!isNaN(date.getTime())) {
-                                // Format as YYYY-MM-DD HH:MM:SS
-                                const year = date.getFullYear();
-                                const month = String(date.getMonth() + 1).padStart(2, '0');
-                                const day = String(date.getDate()).padStart(2, '0');
-                                const hours = String(date.getHours()).padStart(2, '0');
-                                const minutes = String(date.getMinutes()).padStart(2, '0');
-                                const seconds = String(date.getSeconds()).padStart(2, '0');
-                                
-                                timestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-                            }
-                        } catch (e) {
-                            // Keep as is if can't parse
-                        }
-                    }
-                    
-                    // Format time spent as HH:MM
-                    let timeSpent = '';
-                    if (record.time_spent !== null && record.time_spent !== undefined) {
-                        const hours = Math.floor(record.time_spent / 60);
-                        const minutes = record.time_spent % 60;
-                        timeSpent = `${hours}:${minutes.toString().padStart(2, '0')}`;
-                    }
-                    
-                    // Remove "Telephely" from area_name
-                    let areaName = record.area_name || '';
-                    areaName = areaName.replace(/\s+Telephely$/i, '');
-                    
-                    return {
-                        platenumber: record.platenumber || '',
-                        timestamp: timestamp || '',
-                        area_name: areaName,
-                        direction: record.direction || '',
-                        timeSpent: timeSpent,
-                        distance: record.distance !== null ? record.distance : ''
-                    };
-                });
-            });
-            
-            // Add event listener to the vehicle selector
-            const vehicleSelector = document.getElementById('vehicle-selector');
-            if (vehicleSelector) {
-                vehicleSelector.addEventListener('change', function() {
-                    const selectedPlate = this.value;
-                    const vehicleDataContainer = document.getElementById('vehicle-data');
-                    
-                    if (!selectedPlate || !vehicleDataContainer) {
-                        vehicleDataContainer.innerHTML = `
-                            <tr>
-                                <td colspan="6" class="text-center">Please select a vehicle</td>
-                            </tr>
-                        `;
-                        return;
-                    }
-                    
-                    const records = formattedRecords[selectedPlate] || [];
-                    
-                    if (records.length === 0) {
-                        vehicleDataContainer.innerHTML = `
-                            <tr>
-                                <td colspan="6" class="text-center">No records found for ${selectedPlate}</td>
-                            </tr>
-                        `;
-                        return;
-                    }
-                    
-                    // Render the records
-                    let rowsHtml = '';
-                    records.forEach(record => {
-                        rowsHtml += `
-                            <tr>
-                                <td>${record.platenumber}</td>
-                                <td>${record.timestamp}</td>
-                                <td>${record.area_name}</td>
-                                <td>${record.direction}</td>
-                                <td>${record.timeSpent}</td>
-                                <td>${record.distance}</td>
-                            </tr>
-                        `;
-                    });
-                    
-                    vehicleDataContainer.innerHTML = rowsHtml;
-                });
-            }
-            
-            // Add event listener for confirm import button
-            const confirmImportBtn = document.getElementById('confirm-ifleet-import');
-            if (confirmImportBtn) {
-                confirmImportBtn.addEventListener('click', async function() {
-                    try {
-                        if (importLoading) importLoading.style.display = 'flex';
-                        showImportStatus('Importing valid vehicle data to database...', 'info');
-                        
-                        // Filter data to include only valid plate numbers AND deduplicate at the same time
-                        const uniqueRecords = new Map();
-                        
-                        // First pass - collect only valid plate records with unique keys
-                        data.forEach(record => {
-                            const plate = record.platenumber || '';
-                            
-                            // Skip records with invalid or header-like data
-                            if (!isValidPlateNumber(plate)) return;
-                            
-                            // Also filter out records with header data in other fields
-                            if (record.area_name && 
-                                (record.area_name.toLowerCase().includes('terület') || 
-                                 record.area_name.toLowerCase().includes('név') ||
-                                 record.area_name.toLowerCase().includes('neve'))) {
-                                return;
-                            }
-                            
-                            if (record.direction && 
-                                (record.direction.toLowerCase().includes('irány') ||
-                                 record.direction.toLowerCase().includes('direction'))) {
-                                return;
-                            }
-                            
-                            // Create a unique key for each record to avoid duplicates
-                            const uniqueKey = `${plate}-${record.timestamp}-${record.area_name}-${record.direction}`;
-                            
-                            // Only keep the first occurrence of each unique entry
-                            if (!uniqueRecords.has(uniqueKey)) {
-                                uniqueRecords.set(uniqueKey, record);
-                            }
-                        });
-                        
-                        // Convert the Map values to an array
-                        const validData = Array.from(uniqueRecords.values());
-                        
-                        // Log the deduplication results
-                        console.log(`Filtered from ${data.length} records to ${validData.length} unique records for import`);
-                        
-                        // Trigger the final database update with only unique valid plate numbers
-                        const result = await ipcRenderer.invoke('confirm-ifleet-import', validData);
-                        
-                        if (importLoading) importLoading.style.display = 'none';
-                        
-                        if (result && result.success) {
-                            showImportStatus(`Successfully imported ${validPlates.length} vehicles (${validData.length} unique records) to database`, 'success');
-                            
-                            // Dispatch event similar to SysWeb
-                            const event = new CustomEvent('ifleet-import-confirmed', {
-                                detail: { 
-                                    data: validData,
-                                    success: true
-                                }
-                            });
-                            document.dispatchEvent(event);
-                        } else {
-                            showImportStatus(`Error importing data: ${result ? result.message : 'Unknown error'}`, 'error');
-                        }
-                    } catch (error) {
-                        if (importLoading) importLoading.style.display = 'none';
-                        showImportStatus(`Error confirming import: ${error.message}`, 'error');
-                    }
-                });
-            }
-            
-            // Add event listener for cancel button
-            const cancelImportBtn = document.getElementById('cancel-ifleet-import');
-            if (cancelImportBtn) {
-                cancelImportBtn.addEventListener('click', function() {
-                    // Simply reload the current view
-                    displayIFleetImportedData();
-                    showImportStatus('Import cancelled', 'info');
-                });
-            }
-        } catch (error) {
-            console.error('Error displaying iFleet data:', error);
-            importedRecords.innerHTML = `<p class="error">Error loading iFleet data: ${error.message}</p>`;
+            return earliest === latest ? earliest : `${earliest} to ${latest}`;
+        } catch (e) {
+            return 'N/A';
         }
     }
-
-    // Function to display Routes data from the database
-    async function displayRoutesImportedData() {
-        try {
-            const { ipcRenderer } = require('electron');
-            const data = await ipcRenderer.invoke('get-routes-data');
-            
-            if (!data || data.length === 0) {
-                importedRecords.innerHTML = '<p>No routes data available. Import data first.</p>';
+    
+    // Setup event listeners for SysWeb table filtering and sorting
+    function setupSysWebTableInteractions() {
+        const searchInput = document.getElementById('sysweb-search');
+        const sortSelect = document.getElementById('sort-select');
+        const table = document.getElementById('sysweb-table');
+        
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase();
+                filterSysWebTable(searchTerm);
+            });
+        }
+        
+        if (sortSelect) {
+            sortSelect.addEventListener('change', function() {
+                sortSysWebTable(this.value);
+            });
+        }
+        
+        if (table) {
+            const headers = table.querySelectorAll('th.sortable');
+            headers.forEach(header => {
+                header.addEventListener('click', function() {
+                    const sortField = this.getAttribute('data-sort');
+                    const currentSort = sortSelect.value;
+                    
+                    // Toggle ascending/descending
+                    let newSort;
+                    if (currentSort === `${sortField}-asc`) {
+                        newSort = `${sortField}-desc`;
+                    } else {
+                        newSort = `${sortField}-asc`;
+                    }
+                    
+                    sortSelect.value = newSort;
+                    sortSysWebTable(newSort);
+                });
+            });
+        }
+    }
+    
+    // Filter the SysWeb table based on search term
+    function filterSysWebTable(searchTerm) {
+        const table = document.getElementById('sysweb-table');
+        if (!table) return;
+        
+        const rows = table.querySelectorAll('tbody tr');
+        let visibleRows = 0;
+        
+        rows.forEach(row => {
+            // Skip group headers in search
+            if (row.classList.contains('group-header')) {
+                row.style.display = 'none';
                 return;
             }
             
-            // Group by depot
-            const groupedByDepot = {};
+            const text = row.textContent.toLowerCase();
+            const shouldShow = text.includes(searchTerm);
             
-            data.forEach(record => {
-                const depot = record.depot || 'Unknown';
-                
-                if (!groupedByDepot[depot]) {
-                    groupedByDepot[depot] = [];
-                }
-                
-                groupedByDepot[depot].push(record);
-            });
+            row.style.display = shouldShow ? '' : 'none';
+            if (shouldShow) visibleRows++;
             
-            // Get unique depots
-            const depots = Object.keys(groupedByDepot);
-            
-            // Helper function to format a date
-            function formatDate(dateStr) {
-                if (!dateStr) return '';
-                
-                try {
-                    const date = new Date(dateStr);
-                    if (!isNaN(date.getTime())) {
-                        const year = date.getFullYear();
-                        const month = String(date.getMonth() + 1).padStart(2, '0');
-                        const day = String(date.getDate()).padStart(2, '0');
-                        return `${year}-${month}-${day}`;
-                    }
-                    return dateStr;
-                } catch (e) {
-                    return dateStr;
-                }
-            }
-            
-            let html = `
-                <div class="table-summary">
-                    <p>Showing ${data.length} route records from ${depots.length} depots.</p>
-                </div>
-            `;
-            
-            // Create selection dropdown for depots
-            html += `
-                <div class="depot-filter">
-                    <select id="route-depot-selector" class="form-control select-dropdown">
-                        <option value="">-- All Depots --</option>
-                        ${depots.map(depot => `<option value="${depot}">${depot} (${groupedByDepot[depot].length} routes)</option>`).join('')}
-                    </select>
-                </div>
-            `;
-            
-            // Add confirm import button
-            html += `
-                <div class="preview-controls preview-button-container">
-                    <button id="confirm-routes-import" class="btn btn-success import-btn">Import to DB</button>
-                    <button id="cancel-routes-import" class="btn btn-secondary clear-btn">Clear</button>
-                </div>
-            `;
-            
-            // Create a table for data display
-            html += `
-                <div class="data-table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Route Code</th>
-                                <th>Vehicle Code</th>
-                                <th>Date</th>
-                                <th>Driver</th>
-                                <th>Depot</th>
-                                <th>Weight Capacity</th>
-                                <th>Transport Code</th>
-                                <th>Delivery Records</th>
-                            </tr>
-                        </thead>
-                        <tbody id="route-data">
-                        </tbody>
-                    </table>
-                </div>
-            `;
-            
-            // Render the HTML
-            importedRecords.innerHTML = html;
-            
-            // Function to display records in the table
-            function displayRecords(records) {
-                const routeDataContainer = document.getElementById('route-data');
-                if (!routeDataContainer) return;
-                
-                if (!records || records.length === 0) {
-                    routeDataContainer.innerHTML = `
-                        <tr>
-                            <td colspan="8" class="text-center">No records found</td>
-                        </tr>
-                    `;
-                    return;
-                }
-                
-                // Sort records by date and route code
-                records.sort((a, b) => {
-                    const dateA = new Date(a.date || 0);
-                    const dateB = new Date(b.date || 0);
-                    
-                    if (dateA - dateB !== 0) {
-                        return dateB - dateA; // Most recent first
-                    }
-                    
-                    return b.route_code - a.route_code; // Higher route codes first
-                });
-                
-                // Render the records
-                let rowsHtml = '';
-                records.forEach(record => {
-                    rowsHtml += `
-                        <tr>
-                            <td>${record.route_code}</td>
-                            <td>${record.vehicle_code}</td>
-                            <td>${formatDate(record.date)}</td>
-                            <td>${record.driver || ''}</td>
-                            <td>${record.depot || ''}</td>
-                            <td>${record.weight_capacity || ''}</td>
-                            <td>${record.transport_code || ''}</td>
-                            <td>${record.delivery_records_count || ''}</td>
-                        </tr>
-                    `;
-                });
-                
-                routeDataContainer.innerHTML = rowsHtml;
-            }
-            
-            // Display all records by default
-            displayRecords(data);
-            
-            // Add event listener to the depot selector
-            const depotSelector = document.getElementById('route-depot-selector');
-            if (depotSelector) {
-                depotSelector.addEventListener('change', function() {
-                    const selectedDepot = this.value;
-                    
-                    if (selectedDepot) {
-                        // Display only records for the selected depot
-                        displayRecords(groupedByDepot[selectedDepot]);
-                    } else {
-                        // Display all records
-                        displayRecords(data);
+            // Show group header if at least one row is visible
+            const name = row.getAttribute('data-name');
+            if (shouldShow && name) {
+                const groupHeaders = table.querySelectorAll(`.group-header`);
+                groupHeaders.forEach(header => {
+                    if (header.textContent.includes(name)) {
+                        header.style.display = '';
                     }
                 });
             }
-            
-            // Add event listener to confirm import button
-            const confirmImportBtn = document.getElementById('confirm-routes-import');
-            if (confirmImportBtn) {
-                confirmImportBtn.addEventListener('click', async function() {
-                    try {
-                        if (importLoading) importLoading.style.display = 'flex';
-                        showImportStatus('Importing valid route data to database...', 'info');
-                        
-                        // Prepare data for import - could filter here if needed
-                        const result = await ipcRenderer.invoke('confirm-routes-import', data);
-                        
-                        showImportStatus(result.message, result.success ? 'success' : 'error');
-                    } catch (error) {
-                        showImportStatus(`Error: ${error.message}`, 'error');
-                    } finally {
-                        if (importLoading) importLoading.style.display = 'none';
-                    }
-                });
+        });
+        
+        // Show message if no results
+        const noResults = document.getElementById('no-results-message');
+        if (visibleRows === 0) {
+            if (!noResults) {
+                const tbody = table.querySelector('tbody');
+                const message = document.createElement('tr');
+                message.id = 'no-results-message';
+                message.innerHTML = `<td colspan="9" class="text-center">No results found for "${searchTerm}"</td>`;
+                tbody.appendChild(message);
             }
-            
-            // Add event listener to cancel import button
-            const cancelImportBtn = document.getElementById('cancel-routes-import');
-            if (cancelImportBtn) {
-                cancelImportBtn.addEventListener('click', function() {
-                    importedRecords.innerHTML = '';
-                });
-            }
-            
-        } catch (error) {
-            console.error('Error displaying routes data:', error);
-            importedRecords.innerHTML = `<p class="error">Error displaying data: ${error.message}</p>`;
+        } else if (noResults) {
+            noResults.remove();
         }
+    }
+    
+    // Sort the SysWeb table based on selected option
+    function sortSysWebTable(sortOption) {
+        const table = document.getElementById('sysweb-table');
+        if (!table) return;
+        
+        const tbody = table.querySelector('tbody');
+        if (!tbody) return;
+        
+        // Parse sort option
+        const [field, direction] = sortOption.split('-');
+        const isAsc = direction === 'asc';
+        
+        // Get all group headers
+        const groupHeaders = Array.from(tbody.querySelectorAll('.group-header'));
+        
+        // Get all data rows grouped by person
+        const rowGroups = {};
+        groupHeaders.forEach(header => {
+            const name = header.querySelector('.person-name').textContent;
+            rowGroups[name] = [];
+            
+            // Get all rows until next group header
+            let nextRow = header.nextElementSibling;
+            while (nextRow && !nextRow.classList.contains('group-header')) {
+                if (!nextRow.id || nextRow.id !== 'no-results-message') {
+                    rowGroups[name].push(nextRow);
+                }
+                nextRow = nextRow.nextElementSibling;
+            }
+        });
+        
+        // Sort the group names
+        const sortedNames = Object.keys(rowGroups).sort((a, b) => {
+            if (field === 'name') {
+                return isAsc ? a.localeCompare(b) : b.localeCompare(a);
+            }
+            return 0; // Default if not sorting by name
+        });
+        
+        // Sort rows within each group if sorting by date
+        if (field === 'date') {
+            Object.keys(rowGroups).forEach(name => {
+                rowGroups[name].sort((rowA, rowB) => {
+                    const dateA = rowA.getAttribute('data-date');
+                    const dateB = rowB.getAttribute('data-date');
+                    return isAsc
+                        ? dateA.localeCompare(dateB)
+                        : dateB.localeCompare(dateA);
+                });
+            });
+        }
+        
+        // Clear the table
+        tbody.innerHTML = '';
+        
+        // Rebuild the table in the sorted order
+        sortedNames.forEach(name => {
+            // Add group header
+            const header = document.createElement('tr');
+            header.className = 'group-header';
+            header.innerHTML = `
+                <td colspan="9">
+                    <div class="person-header">
+                        <span class="person-name">${name}</span>
+                        <span class="record-count">${rowGroups[name].length} records</span>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(header);
+            
+            // Add all rows for this person
+            rowGroups[name].forEach(row => {
+                tbody.appendChild(row.cloneNode(true));
+            });
+        });
     }
 } 
