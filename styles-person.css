@@ -1,0 +1,46 @@
+/* Person section styling */
+.person-section {
+    padding: 8px 5px;
+    margin: 0;
+    border: none;
+    border-radius: 8px;
+}
+
+.person-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 0;
+    padding: 12px 10px;
+    border-left: 10px solid rgba(0, 120, 215, 0.5);
+    background-color: rgba(0, 120, 215, 0.05);
+    height: auto;
+    border-radius: 8px;
+}
+
+.person-name {
+    font-weight: 600;
+    color: #005a9e;
+    font-size: 0.9rem;
+}
+
+.record-count {
+    font-size: 0.75rem;
+    color: #767676;
+    background-color: rgba(0, 0, 0, 0.05);
+    padding: 1px 5px;
+    border-radius: 8px;
+    margin-left: 6px;
+}
+
+/* Group header styling */
+.group-header {
+    background-color: rgba(0, 120, 215, 0.05) !important;
+    font-weight: 600;
+    line-height: 1;
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.group-header td {
+    padding: 0 !important;
+} 
