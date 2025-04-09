@@ -796,6 +796,25 @@ function initializeImport() {
         }
     }
     
+    // Format date consistently as YYYY-MM-DD
+    function formatDateYYYYMMDD(dateValue) {
+        if (!dateValue) return '';
+        
+        try {
+            const date = new Date(dateValue);
+            if (!isNaN(date.getTime())) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+        } catch (e) {
+            // Keep as is if can't parse
+        }
+        
+        return dateValue;
+    }
+    
     // Function to display SysWeb data from the database
     async function displaySysWebImportedData() {
         try {
@@ -844,7 +863,7 @@ function initializeImport() {
                         <td>${record.name || ''}</td>
                         <td>${record.jobtitle || ''}</td>
                         <td>${record.costcenter || ''}</td>
-                        <td>${record.date || ''}</td>
+                        <td>${formatDateYYYYMMDD(record.date) || ''}</td>
                         <td>${record.planedshift || ''}</td>
                         <td>${record.actual || ''}</td>
                         <td>${record.check_in || ''}</td>
@@ -924,7 +943,15 @@ function initializeImport() {
                     try {
                         const date = new Date(arrivalTime);
                         if (!isNaN(date.getTime())) {
-                            arrivalTime = date.toLocaleString();
+                            // Format as YYYY-MM-DD HH:MM:SS
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const hours = String(date.getHours()).padStart(2, '0');
+                            const minutes = String(date.getMinutes()).padStart(2, '0');
+                            const seconds = String(date.getSeconds()).padStart(2, '0');
+                            
+                            arrivalTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
                         }
                     } catch (e) {
                         // Keep as is if can't parse
@@ -1283,7 +1310,15 @@ function initializeImport() {
                         try {
                             const date = new Date(timestamp);
                             if (!isNaN(date.getTime())) {
-                                timestamp = date.toLocaleString();
+                                // Format as YYYY-MM-DD HH:MM:SS
+                                const year = date.getFullYear();
+                                const month = String(date.getMonth() + 1).padStart(2, '0');
+                                const day = String(date.getDate()).padStart(2, '0');
+                                const hours = String(date.getHours()).padStart(2, '0');
+                                const minutes = String(date.getMinutes()).padStart(2, '0');
+                                const seconds = String(date.getSeconds()).padStart(2, '0');
+                                
+                                timestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
                             }
                         } catch (e) {
                             // Keep as is if can't parse
@@ -1481,7 +1516,10 @@ function initializeImport() {
                 try {
                     const date = new Date(dateStr);
                     if (!isNaN(date.getTime())) {
-                        return date.toLocaleDateString();
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
                     }
                     return dateStr;
                 } catch (e) {
