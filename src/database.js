@@ -112,6 +112,7 @@ class DriverAlertsDatabase {
           status TEXT,
           position TEXT,
           important_point TEXT,
+          supervised TEXT CHECK(supervised IN ('pending', 'justified', 'unjustified')) DEFAULT 'pending',
           created_at TEXT DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
@@ -232,35 +233,43 @@ class DriverAlertsDatabase {
       if (!hasImportantPoint) {
         console.warn("Adding missing important_point column to stop_events_alert table");
         this.db.exec(`ALTER TABLE stop_events_alert ADD COLUMN important_point TEXT DEFAULT ''`);
-      } else {
-        // Check if type needs to be changed from INTEGER to TEXT
-        const importantPointType = tableInfo.find(col => col.name === 'important_point')?.type;
-        if (importantPointType && importantPointType.toUpperCase() === 'INTEGER') {
-          console.warn("Converting important_point column from INTEGER to TEXT");
-          this.db.exec(`
-            -- Create temporary table
-            CREATE TABLE temp_stop_events_alert AS SELECT * FROM stop_events_alert;
-            -- Drop original table
-            DROP TABLE stop_events_alert;
-            -- Recreate table with TEXT type for important_point
-            CREATE TABLE stop_events_alert (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              plate_number TEXT NOT NULL,
-              arrival_time TEXT NOT NULL,
-              status TEXT,
-              position TEXT,
-              important_point TEXT,
-              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
-            -- Copy data back
-            INSERT INTO stop_events_alert 
-            SELECT id, plate_number, arrival_time, status, position, CAST(important_point AS TEXT), created_at, updated_at 
-            FROM temp_stop_events_alert;
-            -- Drop temp table
-            DROP TABLE temp_stop_events_alert;
-          `);
-        }
+      }
+
+      // Check for supervised column
+      const hasSupervised = tableInfo.some(col => col.name === 'supervised');
+      if (!hasSupervised) {
+        console.warn("Adding missing supervised column to stop_events_alert table");
+        this.db.exec(`ALTER TABLE stop_events_alert ADD COLUMN supervised TEXT CHECK(supervised IN ('pending', 'justified', 'unjustified')) DEFAULT 'pending'`);
+      }
+      
+      // Check if type needs to be changed from INTEGER to TEXT
+      const importantPointType = tableInfo.find(col => col.name === 'important_point')?.type;
+      if (importantPointType && importantPointType.toUpperCase() === 'INTEGER') {
+        console.warn("Converting important_point column from INTEGER to TEXT");
+        this.db.exec(`
+          -- Create temporary table
+          CREATE TABLE temp_stop_events_alert AS SELECT * FROM stop_events_alert;
+          -- Drop original table
+          DROP TABLE stop_events_alert;
+          -- Recreate table with TEXT type for important_point
+          CREATE TABLE stop_events_alert (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plate_number TEXT NOT NULL,
+            arrival_time TEXT NOT NULL,
+            status TEXT,
+            position TEXT,
+            important_point TEXT,
+            supervised TEXT CHECK(supervised IN ('pending', 'justified', 'unjustified')) DEFAULT 'pending',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+          );
+          -- Copy data back
+          INSERT INTO stop_events_alert 
+          SELECT id, plate_number, arrival_time, status, position, CAST(important_point AS TEXT), 'pending', created_at, updated_at 
+          FROM temp_stop_events_alert;
+          -- Drop temp table
+          DROP TABLE temp_stop_events_alert;
+        `);
       }
     } catch (error) {
       console.error('Error ensuring stop events columns:', error);
@@ -517,8 +526,8 @@ class DriverAlertsDatabase {
     try {
       const query = `
         INSERT INTO stop_events_alert (
-          plate_number, arrival_time, status, position, important_point, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          plate_number, arrival_time, status, position, important_point, supervised, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
       `;
       
       const result = this.db.prepare(query).run(
@@ -526,7 +535,8 @@ class DriverAlertsDatabase {
         alertData.arrival_time,
         alertData.status,
         alertData.position,
-        alertData.important_point || 0
+        alertData.important_point || 0,
+        alertData.supervised || 'pending'
       );
       
       return result.lastInsertRowid;

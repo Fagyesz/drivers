@@ -124,6 +124,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Initialize tab system
   initializeTabs();
+  
+  // Initialize refresh buttons
+  initializeRefreshButtons();
 
   // Load data counts for dashboard
   loadDashboardCounts();
@@ -2157,4 +2160,38 @@ function initializeImport() {
       importedRecords.innerHTML = `<p class="error">Error displaying data: ${error.message}</p>`;
     }
   }
+}
+
+// Initialize refresh buttons functionality
+function initializeRefreshButtons() {
+  rendererLogger.info("Initializing refresh buttons");
+  
+  // Get all refresh buttons
+  const refreshButtons = document.querySelectorAll(".refresh-btn");
+  
+  refreshButtons.forEach(button => {
+    button.addEventListener("click", () => {
+      const tabId = button.closest(".tab-pane").id;
+      rendererLogger.info("Refresh button clicked", { tabId });
+      
+      // Determine which data to refresh based on the tab
+      if (tabId === "dashboard-tab") {
+        loadDashboardCounts();
+      } else if (tabId === "vehicles-tab") {
+        loadVehicles();
+      } else if (tabId === "people-tab") {
+        loadPeople();
+      } else if (tabId === "rounds-tab") {
+        loadRounds();
+      } else if (tabId === "alerts-tab") {
+        loadAlerts(currentAlertFilter);
+      } else if (tabId === "import-tab") {
+        // For import tab, we might not need to refresh data
+        showNotification("Import tab refreshed", "info");
+      }
+      
+      // Show a brief notification
+      showNotification("Data refreshed", "success");
+    });
+  });
 }
