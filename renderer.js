@@ -153,27 +153,64 @@ function addSplashEffect() {
 }
 
 // Show notification
-function showNotification(message, type = "info") {
+function showNotification(message, type = "info", duration = 3000) {
+  rendererLogger.info("Showing notification", { message, type });
+
+  // Remove any existing notifications
+  const existingNotification = document.querySelector(".notification");
+  if (existingNotification) {
+    existingNotification.remove();
+  }
+
   // Create notification element
   const notification = document.createElement("div");
   notification.className = `notification ${type}`;
-  notification.textContent = message;
+
+  // Get icon based on type
+  let icon = "ℹ️";
+  switch (type) {
+    case "success":
+      icon = "✅";
+      break;
+    case "error":
+      icon = "❌";
+      break;
+    case "warning":
+      icon = "⚠️";
+      break;
+    default:
+      icon = "ℹ️";
+  }
+
+  // Create notification content
+  notification.innerHTML = `
+    <span class="notification-icon">${icon}</span>
+    <span class="notification-message">${message}</span>
+    <span class="notification-close">✕</span>
+  `;
 
   // Add to document
   document.body.appendChild(notification);
 
-  // Trigger animation
-  setTimeout(() => {
-    notification.classList.add("show");
-  }, 10);
+  // Add close button handler
+  const closeButton = notification.querySelector(".notification-close");
+  closeButton.addEventListener("click", () => {
+    notification.classList.add("hide");
+    setTimeout(() => notification.remove(), 300);
+  });
 
-  // Remove after delay
-  setTimeout(() => {
-    notification.classList.remove("show");
+  // Auto remove after duration
+  if (duration > 0) {
     setTimeout(() => {
-      notification.remove();
-    }, 300);
-  }, 3000);
+      if (document.body.contains(notification)) {
+        notification.classList.add("hide");
+        setTimeout(() => notification.remove(), 300);
+      }
+    }, duration);
+  }
+
+  // Log notification
+  rendererLogger.info("Notification shown", { message, type });
 }
 
 // Tab functionality
@@ -492,8 +529,12 @@ async function loadAlerts(filterStatus = "pending") {
 }
 
 // Load dashboard counts
-async function loadDashboardCounts() {
+async function loadDashboardCounts(retryCount = 0) {
   rendererLogger.info("Loading dashboard counts");
+
+  // Show loading state for all cards
+  const cards = document.querySelectorAll(".dashboard-card");
+  cards.forEach(card => card.classList.add("loading"));
 
   try {
     // Get people count
@@ -505,7 +546,14 @@ async function loadDashboardCounts() {
       rendererLogger.error("Error loading people count", {
         error: error.message,
       });
+      if (retryCount < 3) {
+        // Retry up to 3 times with exponential backoff
+        const delay = Math.pow(2, retryCount) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return loadDashboardCounts(retryCount + 1);
+      }
       peopleCount = 12; // Demo fallback
+      showNotification("Error loading people count. Using demo data.", "error");
     }
     document.getElementById("people-count").textContent = peopleCount;
 
@@ -518,7 +566,13 @@ async function loadDashboardCounts() {
       rendererLogger.error("Error loading vehicles count", {
         error: error.message,
       });
+      if (retryCount < 3) {
+        const delay = Math.pow(2, retryCount) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return loadDashboardCounts(retryCount + 1);
+      }
       vehiclesCount = 8; // Demo fallback
+      showNotification("Error loading vehicles count. Using demo data.", "error");
     }
     document.getElementById("vehicles-count").textContent = vehiclesCount;
 
@@ -531,7 +585,13 @@ async function loadDashboardCounts() {
       rendererLogger.error("Error loading rounds count", {
         error: error.message,
       });
+      if (retryCount < 3) {
+        const delay = Math.pow(2, retryCount) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return loadDashboardCounts(retryCount + 1);
+      }
       roundsCount = 4; // Demo fallback
+      showNotification("Error loading rounds count. Using demo data.", "error");
     }
     document.getElementById("rounds-count").textContent = roundsCount;
 
@@ -544,7 +604,13 @@ async function loadDashboardCounts() {
       rendererLogger.error("Error loading alerts count", {
         error: error.message,
       });
+      if (retryCount < 3) {
+        const delay = Math.pow(2, retryCount) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return loadDashboardCounts(retryCount + 1);
+      }
       alertsCount = 3; // Demo fallback
+      showNotification("Error loading alerts count. Using demo data.", "error");
     }
     document.getElementById("alerts-count").textContent = alertsCount;
 
@@ -554,15 +620,34 @@ async function loadDashboardCounts() {
       roundsCount,
       alertsCount,
     });
+
+    // Remove loading state from all cards
+    cards.forEach(card => card.classList.remove("loading"));
+
+    // Show success notification
+    showNotification("Dashboard data refreshed successfully", "success");
   } catch (error) {
     rendererLogger.error("Error loading dashboard counts", {
       error: error.message,
     });
+
+    if (retryCount < 3) {
+      const delay = Math.pow(2, retryCount) * 1000;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return loadDashboardCounts(retryCount + 1);
+    }
+
     // Fall back to demo mode
     document.getElementById("people-count").textContent = "12";
     document.getElementById("vehicles-count").textContent = "8";
     document.getElementById("rounds-count").textContent = "4";
     document.getElementById("alerts-count").textContent = "3";
+
+    // Remove loading state from all cards
+    cards.forEach(card => card.classList.remove("loading"));
+
+    // Show error notification
+    showNotification("Error loading dashboard data. Using demo data.", "error");
   }
 }
 
@@ -2169,29 +2254,70 @@ function initializeRefreshButtons() {
   // Get all refresh buttons
   const refreshButtons = document.querySelectorAll(".refresh-btn");
   
-  refreshButtons.forEach(button => {
-    button.addEventListener("click", () => {
-      const tabId = button.closest(".tab-pane").id;
-      rendererLogger.info("Refresh button clicked", { tabId });
-      
+  // Create a debounce function to prevent rapid clicking
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+  
+  // Function to handle refresh click
+  async function handleRefreshClick(button) {
+    const tabId = button.closest(".tab-pane").id;
+    rendererLogger.info("Refresh button clicked", { tabId });
+    
+    // Add loading state to button
+    button.disabled = true;
+    button.classList.add("loading");
+    const originalContent = button.innerHTML;
+    button.innerHTML = '🔄';
+    
+    try {
       // Determine which data to refresh based on the tab
       if (tabId === "dashboard-tab") {
-        loadDashboardCounts();
+        await loadDashboardCounts();
       } else if (tabId === "vehicles-tab") {
-        loadVehicles();
+        await loadVehicles();
       } else if (tabId === "people-tab") {
-        loadPeople();
+        await loadPeople();
       } else if (tabId === "rounds-tab") {
-        loadRounds();
+        await loadRounds();
       } else if (tabId === "alerts-tab") {
-        loadAlerts(currentAlertFilter);
+        await loadAlerts(currentAlertFilter);
       } else if (tabId === "import-tab") {
         // For import tab, we might not need to refresh data
         showNotification("Import tab refreshed", "info");
       }
       
-      // Show a brief notification
-      showNotification("Data refreshed", "success");
-    });
+      // Show a brief success notification
+      showNotification("Data refreshed successfully", "success");
+    } catch (error) {
+      rendererLogger.error("Error refreshing data", {
+        error: error.message,
+        tabId
+      });
+      
+      // Show error notification
+      showNotification("Error refreshing data. Please try again.", "error");
+    } finally {
+      // Remove loading state from button
+      button.disabled = false;
+      button.classList.remove("loading");
+      button.innerHTML = originalContent;
+    }
+  }
+  
+  // Create debounced version of refresh handler
+  const debouncedRefresh = debounce(handleRefreshClick, 500);
+  
+  // Add click event listener to each refresh button
+  refreshButtons.forEach(button => {
+    button.addEventListener("click", () => debouncedRefresh(button));
   });
 }
